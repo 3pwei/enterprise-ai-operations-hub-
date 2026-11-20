@@ -8,6 +8,12 @@ API accepts JSON and returns JSON. `/health` is public and verifies DB access. `
 | `GET /api/products` | bearer credential | `[{sku, name, inventory, reorder_point}]` |
 | `GET /api/dashboard` | bearer credential | `{kpi, issues, sales}`, each `{source, data}` |
 | `POST /api/chat` | `{message}` (2–1000 chars), bearer credential | `{mode: "mock"|"llm", answer, trace: [{tool, input, source, output}]}` |
+| `POST /api/workflows` | `{message}` (6–1000 chars with one SKU and procurement intent) | Persisted draft or `no_gap`/`failed` workflow |
+| `GET /api/workflows`, `GET /api/workflows/{id}` | bearer credential | Own workflow(s); manager may read all; includes events and draft |
+| `POST /api/workflows/{id}/retry` | bearer credential | Re-run failed or stale running task (60-second lease) |
+| `POST /api/workflows/{id}/cancel` | bearer credential | Cancel running, failed, or awaiting confirmation |
+| `POST /api/workflows/{id}/submit` | manager credential, no body | Atomically create a pending purchase and EIP approval after human confirmation; repeat returns the same IDs |
+| `GET /api/workflows/{id}/approval` | manager credential | EIP MCP approval status; no approval mutation |
 
 MCP calls require a signed capability issued by the API. It expires after 120 seconds; callers cannot self-select a user or role. Each tool returns `{source, data}`. Bad signatures, unauthorized roles, invalid inputs and unknown tool names fail closed; recorded audit outcomes are `ok`, `denied`, or `error`.
 
@@ -18,7 +24,8 @@ MCP calls require a signed capability issued by the API. It expires after 120 se
 | Data | `sales_analysis` | capability | `data.sales_orders`: count, sum(quantity), sum(quantity × unit_price), TWD |
 | ERP | `inventory` | capability, `sku` (letters/digits/hyphen, max 40) | `erp.products`: quantity, reorder point, below-threshold flag |
 | ERP | `order_status` | capability, positive `order_id` | `erp.sales_orders`: order ID, quantity, status |
+| ERP | `open_orders` | capability, validated SKU | `erp.sales_orders+erp.purchase_orders`: open sales demand and pending/approved purchase supply |
 | EIP | `approval_rules` | capability | `eip.policy`: demo rule and version |
 | EIP | `approval_status` | manager capability, positive `approval_id` | `eip.approvals`: approval ID, purchase ID, status |
 
-The MCP client uses official Python SDK stdio transport, so servers are not publicly exposed. The MCP `call_tool` response is decoded by the API. No generic SQL query tool or mutating MCP method is registered. Individual tools are also independently testable by running the corresponding Python module as a stdio MCP server.
+The MCP client uses official Python SDK stdio transport, so servers are not publicly exposed. The MCP `call_tool` response is decoded by the API. No generic SQL query tool or mutating MCP method is registered. Purchase submission is a separate, explicitly confirmed and role-checked API action. Individual tools are also independently testable by running the corresponding Python module as a stdio MCP server.

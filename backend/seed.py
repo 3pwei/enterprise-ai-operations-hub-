@@ -18,11 +18,16 @@ from backend.models import (
 
 def seed(db: Session) -> None:
     if db.scalar(select(User.id).limit(1)) is not None:
+        # Add the Phase 04 demo SKU to databases initialized by an earlier phase.
+        if db.scalar(select(Product.id).where(Product.sku == "P-300")) is None:
+            db.add(Product(sku="P-300", name="Actuator Demo", inventory=4, reorder_point=20))
+            db.commit()
         return
     db.add_all([User(id=1, name="Alice Analyst", role="analyst", active=True),
                 User(id=2, name="Ming Manager", role="manager", active=True)])
     db.add_all([Product(id=1, sku="P-100", name="Sensor Module", inventory=25, reorder_point=40),
-                Product(id=2, sku="P-200", name="Controller", inventory=140, reorder_point=60)])
+                Product(id=2, sku="P-200", name="Controller", inventory=140, reorder_point=60),
+                Product(id=3, sku="P-300", name="Actuator Demo", inventory=4, reorder_point=20)])
     db.add_all([ProductionLine(id=1, name="Line A"), ProductionLine(id=2, name="Line B")])
     # Explicit IDs do not create ORM relationship edges: flush parents before dependent rows.
     db.flush()

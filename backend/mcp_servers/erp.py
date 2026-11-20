@@ -21,5 +21,12 @@ def order_status(capability: str, order_id: int) -> dict:
         return invoke(db, "order_status", capability, {"order_id": order_id})
 
 
+@mcp.tool()
+def open_orders(capability: str, sku: str) -> dict:
+    """Look up unfulfilled sales and submitted pending/approved purchase orders for a SKU."""
+    with Session(engine()) as db:
+        return invoke(db, "open_orders", capability, {"sku": sku})
+
+
 if __name__ == "__main__":
     mcp.run()

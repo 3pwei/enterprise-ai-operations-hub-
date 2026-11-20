@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend.models import Approval, Audit, Batch, Product, QualityIssue, SalesOrder
+from backend.models import Approval, Audit, Batch, Product, PurchaseOrder, QualityIssue, SalesOrder
 from backend.security import verify_capability
 
 
@@ -27,12 +27,14 @@ class ApprovalArgs(Args):
 ARG_TYPES: dict[str, type[Args]] = {
     "production_kpi": Args, "quality_issues": Args, "sales_analysis": Args,
     "inventory": InventoryArgs, "order_status": OrderArgs,
+    "open_orders": InventoryArgs,
     "approval_rules": Args, "approval_status": ApprovalArgs,
 }
 SOURCES = {
     "production_kpi": "data.batches", "quality_issues": "data.quality_issues",
     "sales_analysis": "data.sales_orders", "inventory": "erp.products",
     "order_status": "erp.sales_orders", "approval_rules": "eip.policy",
+    "open_orders": "erp.sales_orders+erp.purchase_orders",
     "approval_status": "eip.approvals",
 }
 
@@ -70,6 +72,23 @@ def invoke(db: Session, tool: str, capability: str, params: dict[str, Any]) -> d
             order = db.get(SalesOrder, cast(OrderArgs, args).order_id)
             result = {"order_id": order.id, "quantity": order.quantity,
                       "status": order.status} if order else {"error": "not_found"}
+        elif tool == "open_orders":
+            sku = cast(InventoryArgs, args).sku
+            product = db.scalar(select(Product).where(Product.sku == sku))
+            if product is None:
+                result = {"error": "not_found"}
+            else:
+                sales = db.scalars(select(SalesOrder).where(
+                    SalesOrder.product_id == product.id, SalesOrder.status == "open"
+                ).order_by(SalesOrder.id)).all()
+                purchases = db.scalars(select(PurchaseOrder).where(
+                    PurchaseOrder.product_id == product.id,
+                    PurchaseOrder.status.in_(["pending", "approved"])
+                ).order_by(PurchaseOrder.id)).all()
+                result = {"sku": sku,
+                          "open_sales": [{"id": o.id, "quantity": o.quantity} for o in sales],
+                          "inbound_purchases": [{"id": o.id, "quantity": o.quantity,
+                                                  "status": o.status} for o in purchases]}
         elif tool == "approval_rules":
             result = {"policy": "Demo purchase approval: manager review required for all pending requests.",
                       "version": "demo-1"}

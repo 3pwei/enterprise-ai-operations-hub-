@@ -10,7 +10,8 @@ from mcp.types import TextContent
 from backend.config import settings
 
 SERVER = {"production_kpi": "data", "quality_issues": "data", "sales_analysis": "data",
-          "inventory": "erp", "order_status": "erp", "approval_rules": "eip", "approval_status": "eip"}
+          "inventory": "erp", "order_status": "erp", "open_orders": "erp",
+          "approval_rules": "eip", "approval_status": "eip"}
 
 
 async def call_tool(tool: str, capability: str, params: dict[str, Any]) -> dict[str, Any]:

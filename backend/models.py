@@ -1,6 +1,6 @@
-from datetime import date
+from datetime import UTC, date, datetime
 
-from sqlalchemy import Boolean, Date, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.db import Base
@@ -80,3 +80,37 @@ class Audit(Base):
     actor_id: Mapped[int] = mapped_column(Integer)
     tool: Mapped[str] = mapped_column(String(60))
     outcome: Mapped[str] = mapped_column(String(30))
+
+
+class Workflow(Base):
+    __tablename__ = "workflows"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    sku: Mapped[str] = mapped_column(String(40))
+    request: Mapped[str] = mapped_column(String(1000))
+    status: Mapped[str] = mapped_column(String(30))
+    inventory: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reorder_point: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    open_sales: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    inbound: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class WorkflowEvent(Base):
+    __tablename__ = "workflow_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflows.id"))
+    actor_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    agent: Mapped[str] = mapped_column(String(40))
+    step: Mapped[str] = mapped_column(String(60))
+    outcome: Mapped[str] = mapped_column(String(30))
+    detail: Mapped[str] = mapped_column(Text)
+
+
+class WorkflowSubmission(Base):
+    __tablename__ = "workflow_submissions"
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflows.id"), primary_key=True)
+    purchase_id: Mapped[int] = mapped_column(ForeignKey("purchase_orders.id"), unique=True)
+    approval_id: Mapped[int] = mapped_column(ForeignKey("approvals.id"), unique=True)

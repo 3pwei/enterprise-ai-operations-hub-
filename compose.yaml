@@ -14,13 +14,71 @@ services:
   api:
     build: .
     env_file: .env
+    environment:
+      MCP_DATA_URL: http://data-mcp:8001/mcp
+      MCP_ERP_URL: http://erp-mcp:8001/mcp
+      MCP_EIP_URL: http://eip-mcp:8001/mcp
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
+      data-mcp:
+        condition: service_healthy
+      erp-mcp:
+        condition: service_healthy
+      eip-mcp:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      retries: 12
+  data-mcp:
+    build: .
+    command: ["python", "-m", "backend.mcp_servers.data"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+      MCP_SIGNING_KEY: ${MCP_SIGNING_KEY:?Set MCP_SIGNING_KEY in .env}
+      MCP_TRANSPORT: streamable-http
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8001
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8001), 2).close()"]
+      interval: 10s
+      retries: 12
+  erp-mcp:
+    build: .
+    command: ["python", "-m", "backend.mcp_servers.erp"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+      MCP_SIGNING_KEY: ${MCP_SIGNING_KEY:?Set MCP_SIGNING_KEY in .env}
+      MCP_TRANSPORT: streamable-http
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8001
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8001), 2).close()"]
+      interval: 10s
+      retries: 12
+  eip-mcp:
+    build: .
+    command: ["python", "-m", "backend.mcp_servers.eip"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+      MCP_SIGNING_KEY: ${MCP_SIGNING_KEY:?Set MCP_SIGNING_KEY in .env}
+      MCP_TRANSPORT: streamable-http
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8001
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8001), 2).close()"]
       interval: 10s
       retries: 12
   frontend:

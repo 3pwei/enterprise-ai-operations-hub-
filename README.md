@@ -1,6 +1,6 @@
 # Enterprise AI Operations Hub
 
-A simulated manufacturing operations dashboard and agent demonstration. Three independent MCP servers expose Data, ERP, and EIP read-only tools; FastAPI checks a demo bearer credential, mints a short-lived signed MCP capability, and records each tool call in PostgreSQL. OpenAI Agents SDK Function Calling selects tools when `OPENAI_API_KEY` is set. Otherwise a clearly labelled deterministic Mock Mode invokes the same MCP servers. No real SAP or EIP connectivity.
+A simulated manufacturing operations dashboard and agent demonstration. Docker Compose runs Data, ERP, and EIP as three separately running MCP services on its private network. FastAPI checks a demo bearer credential, mints a short-lived signed MCP capability, and records each tool call in PostgreSQL. OpenAI Agents SDK Function Calling selects tools when `OPENAI_API_KEY` is set. Otherwise a clearly labelled deterministic Mock Mode invokes the same MCP services. No real SAP or EIP connectivity.
 
 ## Quick start
 
@@ -17,13 +17,13 @@ For a local development run, use Python 3.12 and Node 22: `python -m venv .venv 
 flowchart TD
   UI[React dashboard and chat] --> API[FastAPI credential and contract]
   API --> Agent[Agents SDK or labelled Mock Mode]
-  Agent --> Data[Data MCP]
-  Agent --> ERP[ERP MCP]
-  Agent --> EIP[EIP MCP]
+  Agent -->|MCP HTTP| Data[Data MCP container]
+  Agent -->|MCP HTTP| ERP[ERP MCP container]
+  Agent -->|MCP HTTP| EIP[EIP MCP container]
   Data & ERP & EIP --> DB[(PostgreSQL: simulated records and audit)]
 ```
 
-Each MCP server runs as an independent stdio subprocess (`python -m backend.mcp_servers.data`, `.erp`, `.eip`). The API calls them through the official MCP client; Function Calling tools wrap those calls and keep signed credentials outside model context. SQLAlchemy performs the numerical calculations; the model is instructed to explain returned figures only. Every demo record is seeded once with stable IDs and dates from 2026-11-01 to 2026-11-02.
+Compose starts six services: `db`, `api`, `frontend`, `data-mcp`, `erp-mcp`, and `eip-mcp`. Each MCP service is a separate long-running process and container, reachable only inside Compose on port 8001 via Streamable HTTP; only the API and frontend publish host ports. The API calls each MCP service through the official MCP client. For Python-only local development without Compose, leaving `MCP_DATA_URL`, `MCP_ERP_URL`, and `MCP_EIP_URL` unset uses three stdio subprocesses instead. Function Calling tools wrap those calls and keep signed credentials outside model context. SQLAlchemy performs the numerical calculations; the model is instructed to explain returned figures only. Every demo record is seeded once with stable IDs and dates from 2026-11-01 to 2026-11-02.
 
 ## Security boundaries and limitations
 
@@ -33,4 +33,4 @@ Each MCP server runs as an independent stdio subprocess (`python -m backend.mcp_
 
 ## Verification
 
-Backend: `pytest -q && ruff check backend tests && mypy backend --follow-imports=silent`. Frontend: `cd frontend && npm run build && npx playwright install chromium && npm run test:e2e`. Docker: `docker compose up -d --build --wait` then `curl -fsS http://localhost:8000/health` and `curl -fsS -H "Authorization: Bearer <your token>" http://localhost:8000/api/dashboard`. GitHub Actions runs backend, frontend, and Docker smoke jobs. See [API and MCP contracts](docs/contracts.md) for inputs and outputs.
+Backend: `pytest -q && ruff check backend tests scripts && mypy backend --follow-imports=silent`. Frontend: `cd frontend && npm run build && npx playwright install chromium && npm run test:e2e`. Docker: `docker compose up -d --build --wait`, then `curl -fsS http://localhost:8000/health`, `curl -fsS -H "Authorization: Bearer <your token>" http://localhost:8000/api/dashboard`, and `docker compose exec -T api python -m scripts.smoke_mcp_http`. GitHub Actions runs backend, frontend, and Docker smoke jobs. See [API and MCP contracts](docs/contracts.md) for inputs and outputs.

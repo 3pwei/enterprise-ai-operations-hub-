@@ -1,10 +1,10 @@
-from mcp.server.fastmcp import FastMCP
 from sqlalchemy.orm import Session
 
 from backend.db import engine
+from backend.mcp_servers.runtime import create_server, serve
 from backend.tool_service import invoke
 
-mcp = FastMCP("ERP MCP")
+mcp = create_server("ERP MCP", "erp")
 
 
 @mcp.tool()
@@ -22,4 +22,4 @@ def order_status(capability: str, order_id: int) -> dict:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    serve(mcp)

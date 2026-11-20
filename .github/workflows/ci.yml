@@ -35,5 +35,7 @@ jobs:
           docker compose up -d --build --wait
           curl -fsS http://localhost:8000/health
           curl -fsS -H 'Authorization: Bearer example-analyst-token-at-least-24-characters' http://localhost:8000/api/dashboard
+      - if: failure()
+        run: docker compose logs --no-color api db frontend
       - if: always()
         run: docker compose down -v

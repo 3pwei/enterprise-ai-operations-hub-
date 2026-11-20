@@ -9,6 +9,9 @@ class Settings(BaseModel):
     demo_analyst_token: str = ""
     demo_manager_token: str = ""
     mcp_signing_key: str = ""
+    mcp_data_url: str = ""
+    mcp_erp_url: str = ""
+    mcp_eip_url: str = ""
     openai_api_key: str = ""
     openai_model: str = "gpt-4.1-mini"
 

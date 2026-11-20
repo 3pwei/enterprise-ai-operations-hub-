@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from backend.db import Base, engine
@@ -18,6 +18,7 @@ from backend.models import (
 
 def seed(db: Session) -> None:
     if db.scalar(select(User.id).limit(1)) is not None:
+        sync_postgres_sequences(db)
         # Add the Phase 04 demo SKU to databases initialized by an earlier phase.
         if db.scalar(select(Product.id).where(Product.sku == "P-300")) is None:
             db.add(Product(sku="P-300", name="Actuator Demo", inventory=4, reorder_point=20))
@@ -41,6 +42,21 @@ def seed(db: Session) -> None:
     db.add(QualityIssue(id=1, batch_id=1, severity="high", description="Calibration drift", status="open"))
     db.add(Approval(id=1, requester_id=1, purchase_id=1, status="pending"))
     db.commit()
+    sync_postgres_sequences(db)
+    db.commit()
+
+
+def sync_postgres_sequences(db: Session) -> None:
+    """Fixed demo seed IDs do not advance PostgreSQL SERIAL sequences."""
+    if db.get_bind().dialect.name != "postgresql":
+        return
+    for table in ("products", "purchase_orders", "approvals"):
+        # Table names are internal fixed constants, never user inputs.
+        db.execute(text(
+            f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "
+            f"GREATEST((SELECT COALESCE(MAX(id), 1) FROM {table}), "
+            f"(SELECT last_value FROM {table}_id_seq)))"
+        ))
 
 
 def initialize() -> None:

@@ -22,7 +22,7 @@ This demo uses simulated ERP, EIP and manufacturing data. The Phase 04 route is 
 
 `submitted`, `cancelled`, and `no_gap` cannot be retried or submitted again (repeating an already submitted confirmation returns the same IDs). If a process is interrupted while running, a retry is possible after 60 seconds. Read calls have a 12-second timeout and one bounded retry. Failed requests keep their history and a generic error without exposing transport details. State and event tables survive API restarts when the DB volume is retained. Cancellation during MCP work wins: the runner checks the stored status before saving a draft. A stale draft is rejected if quantities changed; create a new task to recalculate.
 
-The demo uses bearer tokens and role records, not SSO. The manager-only submit and EIP checks happen server-side; hiding controls in the UI is for clarity. SQLAlchemy `create_all` adds new workflow tables for an earlier demo DB; this is a demo upgrade path, not a migration framework. No real SAP/EIP integration, production auth, or live LLM workflow evaluation has been performed.
+The demo uses bearer tokens and role records, not SSO. The manager-only submit and EIP checks happen server-side; hiding controls in the UI is for clarity. SQLAlchemy `create_all` adds new workflow tables for an earlier demo DB; startup aligns PostgreSQL sequences with fixed seed IDs before inserting new records. This is a demo upgrade path, not a migration framework. No real SAP/EIP integration, production auth, or live LLM workflow evaluation has been performed.
 
 ## Reproduce
 

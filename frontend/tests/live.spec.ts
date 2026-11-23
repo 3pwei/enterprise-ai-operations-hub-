@@ -39,8 +39,10 @@ test('real UI, API, MCP and PostgreSQL: edit, stale, deny, submit, approval', as
   expect((await request.post(`/api/workflows/${id}/submit`, { headers: { Authorization: `Bearer ${manager}` } })).status()).toBe(409)
   await page.getByLabel('採購需求').fill(`請評估採購 ${sku}`)
   await page.getByRole('button', { name: '建立採購草稿' }).click()
+  await expect(page.getByText(/採購缺口：15/)).toBeVisible()
   const newFlows = await (await request.get('/api/workflows', { headers: { Authorization: `Bearer ${manager}` } })).json()
-  const fresh = newFlows.find((f: {sku: string; stale: boolean}) => f.sku === sku && !f.stale)
+  const fresh = newFlows.find((f: {sku: string; status: string; stale: boolean}) =>
+    f.sku === sku && f.status === 'awaiting_confirmation' && !f.stale)
   expect(fresh.quantity).toBe(15)
   const submitted = await (await request.post(`/api/workflows/${fresh.id}/submit`, { headers: { Authorization: `Bearer ${manager}` } })).json()
   expect(submitted.purchase_id).toBeTruthy()

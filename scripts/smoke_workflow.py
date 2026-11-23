@@ -4,7 +4,7 @@ import os
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-ROOT = "http://localhost:8000/api/workflows"
+ROOT = "http://127.0.0.1:8000/api/workflows"
 
 
 def call(path, token, method="GET", data=None):

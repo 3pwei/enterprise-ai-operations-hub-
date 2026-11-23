@@ -2,10 +2,12 @@
 
 A simulated manufacturing operations dashboard and agent demonstration. Three independent MCP servers expose Data, ERP, and EIP read-only tools; FastAPI checks a demo bearer credential, mints a short-lived signed MCP capability, and records each tool call in PostgreSQL. OpenAI Agents SDK Function Calling selects tools when `OPENAI_API_KEY` is set. Otherwise a clearly labelled deterministic Mock Mode invokes the same MCP servers. No real SAP or EIP connectivity.
 
-## Quick start
+## Run locally (developer setup)
+
+This repository has no public demo deployment. The following steps run the system on your own computer; they do not provide a shareable site.
 
 1. `cp .env.example .env`. Replace all three `replace-with-...` secrets with independent random strings (minimum 24 characters for demo tokens; 32 for the signing key). Leave `OPENAI_API_KEY=` blank for Mock Mode.
-2. `docker compose up --build --wait` (API: http://localhost:8000/docs; UI: http://localhost:5173).
+2. Run `docker compose up --build --wait` to start the database, API, and UI locally.
 3. Paste the `DEMO_ANALYST_TOKEN` or `DEMO_MANAGER_TOKEN` value from `.env` into the UI login field. Try “本月生產良率與品質異常”, “查詢 P-100 庫存”, “銷售營收”, or “簽核 1” with the manager token. The trace exposes tool name, input, computed output, and source.
 4. In Workflow Console, enter “請評估採購 P-300”. Inventory 4, reorder point 20, and no unfulfilled orders yield a draft for 16 units. Sign in with the manager token, refresh, inspect the draft, click **人工確認並提交**, then **查詢 EIP 簽核**. The simulated EIP status is `pending`, not an approval. P-100 has an existing pending purchase of 50, so its calculated gap is zero.
 5. `docker compose down` when done. Add `-v` only if you intend to remove the database volume.
@@ -40,4 +42,4 @@ See [workflow design and demo](docs/workflow.md) for transitions, retry policy, 
 
 ## Verification
 
-Backend: `pytest -q && ruff check backend tests && mypy backend --follow-imports=silent`. Frontend: `cd frontend && npm run build && npx playwright install chromium && npm run test:e2e`. Docker: `docker compose up -d --build --wait` then `curl -fsS http://localhost:8000/health` and `curl -fsS -H "Authorization: Bearer <your token>" http://localhost:8000/api/dashboard`. GitHub Actions runs backend, frontend, and Docker smoke jobs. See [API and MCP contracts](docs/contracts.md) for inputs and outputs.
+Backend: `pytest -q && ruff check backend tests && mypy backend --follow-imports=silent`. Frontend: `cd frontend && npm run build && npx playwright install chromium && npm run test:e2e`. GitHub Actions checks backend, frontend, and the Docker Compose API/MCP integration. See [API and MCP contracts](docs/contracts.md) for inputs and outputs.

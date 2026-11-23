@@ -74,7 +74,8 @@ jobs:
           DEMO_COOKIE_SECURE=false
           EOF
           docker compose --env-file .env -f deploy/compose.yaml up -d --build --wait
-          curl --retry 10 --retry-delay 2 --retry-connrefused -fsS http://127.0.0.1/api/demo/config
+          curl --retry 10 --retry-delay 2 --retry-connrefused -fsS http://127.0.0.1/
+          curl -fsS http://127.0.0.1/operations/api/demo/config
       - run: npm ci
         working-directory: frontend
       - run: npx playwright install --with-deps chromium

@@ -1,12 +1,22 @@
 {$DEMO_DOMAIN} {
     encode zstd gzip
-    route {
-        @private path /docs* /redoc* /openapi.json /health
-        respond @private 404
-        @api path /api/*
-        reverse_proxy @api api:8000
+    handle /operations {
+        redir /operations/ 308
+    }
+    handle /operations/api/* {
+        uri strip_prefix /operations
+        reverse_proxy api:8000
+    }
+    handle_path /operations/* {
         root * /srv
         try_files {path} /index.html
         file_server
+    }
+    handle / {
+        root * /landing
+        file_server
+    }
+    handle {
+        respond 404
     }
 }

@@ -12,8 +12,10 @@ type Rule = { id: number; formula: 'standard' | 'safety_stock'; safety_stock: nu
 type Preview = { sku: string; inventory: number; reorder_point: number; open_sales: number; inbound: number; quantity: number }
 type CatalogChange = { id: number; actor_id: number; action: string; target: string; before: Record<string, unknown>; after: Record<string, unknown>; created_at: string }
 
+const appBase = import.meta.env.BASE_URL.replace(/\/$/, '')
+
 async function request<T>(path: string, token: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } })
+  const response = await fetch(`${appBase}${path}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } })
   if (!response.ok) {
     const body = await response.json().catch(() => ({})) as { detail?: string }
     throw new Error(`HTTP ${response.status}: ${response.status === 401 ? '登入憑證不正確' : body.detail ?? '服務暫時無法回應'}`)
@@ -47,7 +49,7 @@ export default function App() {
   const [preview, setPreview] = useState<Preview | null>(null)
   const [catalogChanges, setCatalogChanges] = useState<CatalogChange[]>([])
   const [publicDemo, setPublicDemo] = useState(false)
-  useEffect(() => { fetch('/api/demo/config').then(r => r.json()).then(
+  useEffect(() => { fetch(`${appBase}/api/demo/config`).then(r => r.json()).then(
     data => setPublicDemo(Boolean(data.public_demo_mode))).catch(() => {}) }, [])
 
   async function refreshCatalog() {

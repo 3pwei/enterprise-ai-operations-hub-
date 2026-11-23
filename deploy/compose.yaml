@@ -24,6 +24,7 @@ services:
       MCP_SIGNING_KEY: ${MCP_SIGNING_KEY:?set a random signing key}
       PUBLIC_DEMO_MODE: "true"
       DEMO_COOKIE_SECURE: ${DEMO_COOKIE_SECURE:-true}
+      DEMO_COOKIE_PATH: /operations/
       OPENAI_API_KEY: ""
     depends_on:
       db:

@@ -85,7 +85,7 @@ def demo_config() -> dict:
 def set_demo_cookie(response: Response, workspace: str, role: str) -> None:
     response.set_cookie(demo.COOKIE_NAME, demo.cookie(workspace, role), max_age=demo.MAX_AGE,
                         httponly=True, secure=settings().demo_cookie_secure,
-                        samesite="strict", path="/")
+                        samesite="strict", path=settings().demo_cookie_path)
 
 
 @app.post("/api/demo/session")

@@ -77,3 +77,14 @@ def test_expired_workspace_removed_on_new_session(configured, monkeypatch):
         assert visitor.post("/api/demo/session").status_code == 200
         with Session(engine()) as db:
             assert db.scalar(select(func.count()).select_from(DemoWorkspace)) == 1
+
+
+def test_public_cookie_can_be_scoped_to_operations_path(configured, monkeypatch):
+    monkeypatch.setenv("PUBLIC_DEMO_MODE", "true")
+    monkeypatch.setenv("DEMO_COOKIE_PATH", "/operations/")
+    settings.cache_clear()
+    with make_client() as visitor:
+        response = visitor.post("/api/demo/session")
+        assert response.status_code == 200
+        assert "Path=/operations/" in response.headers["set-cookie"]
+        assert "Secure" in response.headers["set-cookie"]

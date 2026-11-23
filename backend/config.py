@@ -13,6 +13,7 @@ class Settings(BaseModel):
     openai_model: str = "gpt-4.1-mini"
     public_demo_mode: bool = False
     demo_cookie_secure: bool = True
+    demo_cookie_path: str = "/"
 
     @classmethod
     def from_env(cls) -> "Settings":

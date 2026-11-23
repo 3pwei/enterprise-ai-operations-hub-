@@ -35,7 +35,7 @@ test('isolated public visitors change inputs and confirm simulated purchase', as
     await confirm.click()
     await expect(a.getByText(/採購單 #/)).toBeVisible()
     await a.getByRole('button', { name: '查詢 EIP 簽核' }).click()
-    await expect(a.getByText(/pending/)).toBeVisible()
+    await expect(a.getByText(/採購單 #\d+ · EIP 簽核 #\d+ · pending/)).toBeVisible()
     await expect(b.getByText('目前沒有任務')).toBeVisible()
   } finally { await first.close(); await second.close() }
 })

@@ -16,6 +16,7 @@ from backend.tool_service import invoke
     ("sales_analysis", {}, "data.sales_orders"),
     ("inventory", {"sku": "P-100"}, "erp.products"),
     ("order_status", {"order_id": 1}, "erp.sales_orders"),
+    ("open_orders", {"sku": "P-100"}, "erp.sales_orders+erp.purchase_orders"),
     ("approval_rules", {}, "eip.policy"),
     ("approval_status", {"approval_id": 1}, "eip.approvals"),
 ])
@@ -45,4 +46,4 @@ def test_seed_idempotent(client):
     from backend.seed import initialize
     initialize()
     with Session(engine()) as db:
-        assert db.scalar(select(func.count()).select_from(Product)) == 2
+        assert db.scalar(select(func.count()).select_from(Product)) == 3

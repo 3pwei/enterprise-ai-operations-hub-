@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from backend.db import Base, engine
@@ -18,11 +18,17 @@ from backend.models import (
 
 def seed(db: Session) -> None:
     if db.scalar(select(User.id).limit(1)) is not None:
+        sync_postgres_sequences(db)
+        # Add the Phase 04 demo SKU to databases initialized by an earlier phase.
+        if db.scalar(select(Product.id).where(Product.sku == "P-300")) is None:
+            db.add(Product(sku="P-300", name="Actuator Demo", inventory=4, reorder_point=20))
+            db.commit()
         return
     db.add_all([User(id=1, name="Alice Analyst", role="analyst", active=True),
                 User(id=2, name="Ming Manager", role="manager", active=True)])
     db.add_all([Product(id=1, sku="P-100", name="Sensor Module", inventory=25, reorder_point=40),
-                Product(id=2, sku="P-200", name="Controller", inventory=140, reorder_point=60)])
+                Product(id=2, sku="P-200", name="Controller", inventory=140, reorder_point=60),
+                Product(id=3, sku="P-300", name="Actuator Demo", inventory=4, reorder_point=20)])
     db.add_all([ProductionLine(id=1, name="Line A"), ProductionLine(id=2, name="Line B")])
     # Explicit IDs do not create ORM relationship edges: flush parents before dependent rows.
     db.flush()
@@ -36,6 +42,21 @@ def seed(db: Session) -> None:
     db.add(QualityIssue(id=1, batch_id=1, severity="high", description="Calibration drift", status="open"))
     db.add(Approval(id=1, requester_id=1, purchase_id=1, status="pending"))
     db.commit()
+    sync_postgres_sequences(db)
+    db.commit()
+
+
+def sync_postgres_sequences(db: Session) -> None:
+    """Fixed demo seed IDs do not advance PostgreSQL SERIAL sequences."""
+    if db.get_bind().dialect.name != "postgresql":
+        return
+    for table in ("products", "purchase_orders", "approvals"):
+        # Table names are internal fixed constants, never user inputs.
+        db.execute(text(
+            f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "
+            f"GREATEST((SELECT COALESCE(MAX(id), 1) FROM {table}), "
+            f"(SELECT last_value FROM {table}_id_seq)))"
+        ))
 
 
 def initialize() -> None:

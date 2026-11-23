@@ -11,7 +11,7 @@ def test_health_seed_and_access(client, analyst):
     assert client.get("/api/products", headers={"Authorization": "Bearer wrong"}).status_code == 401
     result = client.get("/api/products", headers=analyst)
     assert result.status_code == 200
-    assert [p["sku"] for p in result.json()] == ["P-100", "P-200"]
+    assert [p["sku"] for p in result.json()] == ["P-100", "P-200", "P-300"]
 
 
 def test_dashboard_and_chat_use_real_mcp(client, analyst, manager):

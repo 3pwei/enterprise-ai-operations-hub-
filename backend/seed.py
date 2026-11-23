@@ -5,10 +5,13 @@ from sqlalchemy.orm import Session
 
 from backend.db import Base, engine
 from backend.models import (
+    ActiveProcurementRule,
     Approval,
     Batch,
+    ProcurementRule,
     Product,
     ProductionLine,
+    ProductRevision,
     PurchaseOrder,
     QualityIssue,
     SalesOrder,
@@ -23,6 +26,7 @@ def seed(db: Session) -> None:
         if db.scalar(select(Product.id).where(Product.sku == "P-300")) is None:
             db.add(Product(sku="P-300", name="Actuator Demo", inventory=4, reorder_point=20))
             db.commit()
+        seed_rules(db)
         return
     db.add_all([User(id=1, name="Alice Analyst", role="analyst", active=True),
                 User(id=2, name="Ming Manager", role="manager", active=True)])
@@ -43,6 +47,19 @@ def seed(db: Session) -> None:
     db.add(Approval(id=1, requester_id=1, purchase_id=1, status="pending"))
     db.commit()
     sync_postgres_sequences(db)
+    seed_rules(db)
+    db.commit()
+
+
+def seed_rules(db: Session) -> None:
+    for product_id in db.scalars(select(Product.id)).all():
+        if db.get(ProductRevision, product_id) is None:
+            db.add(ProductRevision(product_id=product_id, revision=0))
+    if db.get(ActiveProcurementRule, 1) is None:
+        rule = ProcurementRule(formula="standard", safety_stock=0, author_id=2)
+        db.add(rule)
+        db.flush()
+        db.add(ActiveProcurementRule(id=1, rule_id=rule.id))
     db.commit()
 
 
@@ -50,7 +67,7 @@ def sync_postgres_sequences(db: Session) -> None:
     """Fixed demo seed IDs do not advance PostgreSQL SERIAL sequences."""
     if db.get_bind().dialect.name != "postgresql":
         return
-    for table in ("products", "purchase_orders", "approvals"):
+    for table in ("users", "products", "sales_orders", "purchase_orders", "approvals"):
         # Table names are internal fixed constants, never user inputs.
         db.execute(text(
             f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), "

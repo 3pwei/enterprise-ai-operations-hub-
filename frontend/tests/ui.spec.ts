@@ -1,4 +1,9 @@
 import { expect, test } from '@playwright/test'
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/products', route => route.fulfill({ json: [{ sku: 'P-300', name: 'Demo', inventory: 4, reorder_point: 20, revision: 0 }] }))
+  await page.route('**/api/rules', route => route.fulfill({ json: { active: { id: 1, formula: 'standard', safety_stock: 0, expression: 'max(0, reorder_point + open_sales - inventory - inbound)', author_id: 2 } } }))
+  await page.route('**/api/catalog/changes', route => route.fulfill({ json: [] }))
+})
 test('login and traced mock chat', async ({ page }) => {
   await page.route('**/api/me', route => route.fulfill({ json: { id: 1, role: 'analyst', name: 'Alice' } }))
   await page.route('**/api/dashboard', route => route.fulfill({ json: { kpi: { source: 'data.batches', data: { yield_pct: 96.67 } }, issues: { source: 'data.quality_issues', data: { items: [{}] } }, sales: { source: 'data.sales_orders', data: { revenue: 4500 } } } }))

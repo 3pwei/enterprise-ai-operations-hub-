@@ -1,9 +1,10 @@
 import hmac
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Cookie, Depends, Header, HTTPException
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from sqlalchemy.orm import Session
 
+from backend import demo
 from backend.config import settings
 from backend.db import session
 from backend.models import User
@@ -16,7 +17,10 @@ def _serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(key, salt="hub-mcp-v1")
 
 
-def credential_user(authorization: str | None = Header(default=None), db: Session = Depends(session)) -> User:
+def credential_user(authorization: str | None = Header(default=None),
+                    hub_demo: str | None = Cookie(default=None), db: Session = Depends(session)) -> User:
+    if settings().public_demo_mode:
+        return demo.authenticate(db, hub_demo)
     token = authorization.removeprefix("Bearer ") if authorization else ""
     configured = [(settings().demo_analyst_token, 1), (settings().demo_manager_token, 2)]
     actor_id = next((id for secret, id in configured if len(secret) >= 24 and hmac.compare_digest(token, secret)), None)

@@ -1,6 +1,6 @@
 from datetime import UTC, date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.db import Base
@@ -114,3 +114,70 @@ class WorkflowSubmission(Base):
     workflow_id: Mapped[str] = mapped_column(ForeignKey("workflows.id"), primary_key=True)
     purchase_id: Mapped[int] = mapped_column(ForeignKey("purchase_orders.id"), unique=True)
     approval_id: Mapped[int] = mapped_column(ForeignKey("approvals.id"), unique=True)
+
+
+class ProductRevision(Base):
+    __tablename__ = "product_revisions"
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), primary_key=True)
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ProcurementRule(Base):
+    __tablename__ = "procurement_rules"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    formula: Mapped[str] = mapped_column(String(30))
+    safety_stock: Mapped[int] = mapped_column(Integer)
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class ActiveProcurementRule(Base):
+    __tablename__ = "active_procurement_rule"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rule_id: Mapped[int] = mapped_column(ForeignKey("procurement_rules.id"))
+
+
+class WorkflowBasis(Base):
+    __tablename__ = "workflow_basis"
+    workflow_id: Mapped[str] = mapped_column(ForeignKey("workflows.id"), primary_key=True)
+    product_revision: Mapped[int] = mapped_column(Integer)
+    rule_id: Mapped[int] = mapped_column(ForeignKey("procurement_rules.id"))
+
+
+class DemoWorkspace(Base):
+    __tablename__ = "demo_workspaces"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    active_rule_id: Mapped[int] = mapped_column(ForeignKey("procurement_rules.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class DemoMember(Base):
+    __tablename__ = "demo_members"
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("demo_workspaces.id"))
+
+
+class DemoProduct(Base):
+    __tablename__ = "demo_products"
+    __table_args__ = (UniqueConstraint("workspace_id", "display_sku"),)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("demo_workspaces.id"))
+    display_sku: Mapped[str] = mapped_column(String(40))
+
+
+class DemoRule(Base):
+    __tablename__ = "demo_rules"
+    rule_id: Mapped[int] = mapped_column(ForeignKey("procurement_rules.id"), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("demo_workspaces.id"))
+
+
+class CatalogChange(Base):
+    __tablename__ = "catalog_changes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[str | None] = mapped_column(ForeignKey("demo_workspaces.id"), nullable=True)
+    actor_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    action: Mapped[str] = mapped_column(String(40))
+    target: Mapped[str] = mapped_column(String(40))
+    before_json: Mapped[str] = mapped_column(Text)
+    after_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))

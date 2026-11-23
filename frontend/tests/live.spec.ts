@@ -1,0 +1,51 @@
+import { expect, test } from '@playwright/test'
+
+test('real UI, API, MCP and PostgreSQL: edit, stale, deny, submit, approval', async ({ page, request }) => {
+  const manager = process.env.DEMO_MANAGER_TOKEN!
+  const analyst = process.env.DEMO_ANALYST_TOKEN!
+  const sku = `P-9${String(Date.now()).slice(-6)}`
+  const login = async (token: string) => {
+    await page.goto('/')
+    await page.getByLabel('Demo bearer token').fill(token)
+    await page.getByRole('button', { name: '開啟工作台' }).click()
+    await expect(page.getByRole('heading', { name: '採購 Workflow Console' })).toBeVisible()
+  }
+  await login(manager)
+  await page.getByLabel('編輯 SKU').fill(sku)
+  await page.getByLabel('產品名稱').fill('Integration test actuator')
+  await page.getByLabel('庫存數量').fill('4')
+  await page.getByLabel('補貨基準').fill('20')
+  await page.getByRole('button', { name: '新增或儲存產品' }).click()
+  await expect(page.getByText(`${sku} · Integration test actuator`)).toBeVisible()
+  await page.getByLabel('採購公式').selectOption('safety_stock')
+  await page.getByLabel('安全庫存').fill('5')
+  await page.getByRole('button', { name: `預覽 ${sku}` }).click()
+  await expect(page.getByText(new RegExp(`預覽 ${sku}.*= 21`))).toBeVisible()
+  await page.getByRole('button', { name: '發布規則' }).click()
+  await page.getByRole('button', { name: '切換身分' }).click()
+  await login(analyst)
+  await page.getByLabel('採購需求').fill(`請評估採購 ${sku}`)
+  await page.getByRole('button', { name: '建立採購草稿' }).click()
+  await expect(page.getByText('採購缺口：21', { exact: false })).toBeVisible()
+  const flows = await (await request.get('/api/workflows', { headers: { Authorization: `Bearer ${analyst}` } })).json()
+  const id = flows.find((f: {sku: string}) => f.sku === sku).id
+  expect((await request.post(`/api/workflows/${id}/submit`, { headers: { Authorization: `Bearer ${analyst}` } })).status()).toBe(403)
+  await page.getByRole('button', { name: '切換身分' }).click()
+  await login(manager)
+  await page.getByLabel('編輯 SKU').fill(sku)
+  await page.getByLabel('庫存數量').fill('10')
+  await page.getByRole('button', { name: '新增或儲存產品' }).click()
+  await expect(page.getByText(/資料或規則已更新：請重新建立草稿/)).toBeVisible()
+  expect((await request.post(`/api/workflows/${id}/submit`, { headers: { Authorization: `Bearer ${manager}` } })).status()).toBe(409)
+  await page.getByLabel('採購需求').fill(`請評估採購 ${sku}`)
+  await page.getByRole('button', { name: '建立採購草稿' }).click()
+  const newFlows = await (await request.get('/api/workflows', { headers: { Authorization: `Bearer ${manager}` } })).json()
+  const fresh = newFlows.find((f: {sku: string; stale: boolean}) => f.sku === sku && !f.stale)
+  expect(fresh.quantity).toBe(15)
+  const submitted = await (await request.post(`/api/workflows/${fresh.id}/submit`, { headers: { Authorization: `Bearer ${manager}` } })).json()
+  expect(submitted.purchase_id).toBeTruthy()
+  const repeated = await (await request.post(`/api/workflows/${fresh.id}/submit`, { headers: { Authorization: `Bearer ${manager}` } })).json()
+  expect(repeated.purchase_id).toBe(submitted.purchase_id)
+  const approval = await (await request.get(`/api/workflows/${fresh.id}/approval`, { headers: { Authorization: `Bearer ${manager}` } })).json()
+  expect(approval.data.status).toBe('pending')
+})

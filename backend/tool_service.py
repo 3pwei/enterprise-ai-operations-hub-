@@ -4,7 +4,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend.models import Approval, Audit, Batch, Product, PurchaseOrder, QualityIssue, SalesOrder
+from backend import catalog, demo
+from backend.models import Approval, Audit, Batch, PurchaseOrder, QualityIssue, SalesOrder
 from backend.security import verify_capability
 
 
@@ -48,6 +49,9 @@ def invoke(db: Session, tool: str, capability: str, params: dict[str, Any]) -> d
         user = verify_capability(db, capability, manager_only=tool == "approval_status")
         actor = user.id
         args = ARG_TYPES[tool].model_validate(params)
+        scope = demo.workspace_id(db, user)
+        if scope and tool not in ("inventory", "open_orders", "approval_status", "approval_rules"):
+            raise PermissionError("Tool not available in public simulation")
         outcome = "ok"
         result: dict[str, Any]
         if tool == "production_kpi":
@@ -64,8 +68,12 @@ def invoke(db: Session, tool: str, capability: str, params: dict[str, Any]) -> d
             result = {"order_count": db.scalar(select(func.count()).select_from(SalesOrder)),
                       "units": quantity or 0, "revenue": revenue or 0, "currency": "TWD"}
         elif tool == "inventory":
-            product = db.scalar(select(Product).where(Product.sku == cast(InventoryArgs, args).sku))
-            result = {"sku": product.sku, "inventory": product.inventory,
+            sku = cast(InventoryArgs, args).sku
+            try:
+                product = catalog.product(db, sku, user)
+            except catalog.CatalogError:
+                product = None
+            result = {"sku": sku, "inventory": product.inventory,
                       "reorder_point": product.reorder_point,
                       "below_reorder_point": product.inventory < product.reorder_point} if product else {"error": "not_found"}
         elif tool == "order_status":
@@ -74,7 +82,10 @@ def invoke(db: Session, tool: str, capability: str, params: dict[str, Any]) -> d
                       "status": order.status} if order else {"error": "not_found"}
         elif tool == "open_orders":
             sku = cast(InventoryArgs, args).sku
-            product = db.scalar(select(Product).where(Product.sku == sku))
+            try:
+                product = catalog.product(db, sku, user)
+            except catalog.CatalogError:
+                product = None
             if product is None:
                 result = {"error": "not_found"}
             else:
@@ -94,6 +105,12 @@ def invoke(db: Session, tool: str, capability: str, params: dict[str, Any]) -> d
                       "version": "demo-1"}
         else:
             approval = db.get(Approval, cast(ApprovalArgs, args).approval_id)
+            if scope and approval:
+                purchase = db.get(PurchaseOrder, approval.purchase_id)
+                from backend.models import DemoProduct
+                mapping = db.get(DemoProduct, purchase.product_id) if purchase else None
+                if mapping is None or mapping.workspace_id != scope:
+                    approval = None
             result = {"approval_id": approval.id, "purchase_id": approval.purchase_id,
                       "status": approval.status} if approval else {"error": "not_found"}
         return {"source": SOURCES[tool], "data": result}

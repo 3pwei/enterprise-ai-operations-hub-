@@ -10,15 +10,16 @@ from sqlalchemy import select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
+from backend import catalog, demo
 from backend.db import engine
 from backend.mcp_client import call_tool
 from backend.models import (
     Approval,
     Audit,
-    Product,
     PurchaseOrder,
     User,
     Workflow,
+    WorkflowBasis,
     WorkflowEvent,
     WorkflowSubmission,
 )
@@ -45,13 +46,27 @@ def audit(db: Session, actor: User, action: str, outcome: str) -> None:
 
 def load(db: Session, workflow_id: str, actor: User) -> Workflow:
     flow = db.get(Workflow, workflow_id)
-    if flow is None or (actor.role != "manager" and flow.owner_id != actor.id):
+    scope = demo.workspace_id(db, actor)
+    owner = db.get(User, flow.owner_id) if flow else None
+    owner_scope = demo.workspace_id(db, owner) if owner else None
+    if flow is None or (scope != owner_scope if scope or owner_scope else False) or \
+       (actor.role != "manager" and flow.owner_id != actor.id):
         raise WorkflowError(404, "Workflow not found")
     return flow
 
 
 def snapshot(db: Session, flow: Workflow) -> dict[str, Any]:
     submission = db.get(WorkflowSubmission, flow.id)
+    basis = db.get(WorkflowBasis, flow.id)
+    owner = db.get(User, flow.owner_id)
+    active = catalog.active_rule(db, owner)
+    try:
+        product = catalog.product(db, flow.sku, owner)
+    except catalog.CatalogError:
+        product = None
+    current_revision = catalog.revision(db, product.id).revision if product else None
+    stale = (flow.status == "awaiting_confirmation" and
+             (basis is None or basis.rule_id != active.id or basis.product_revision != current_revision))
     events = db.scalars(select(WorkflowEvent).where(WorkflowEvent.workflow_id == flow.id)
                         .order_by(WorkflowEvent.id)).all()
     return {"id": flow.id, "owner_id": flow.owner_id, "sku": flow.sku,
@@ -60,6 +75,9 @@ def snapshot(db: Session, flow: Workflow) -> dict[str, Any]:
             "inbound": flow.inbound, "quantity": flow.quantity, "error": flow.error,
             "purchase_id": submission.purchase_id if submission else None,
             "approval_id": submission.approval_id if submission else None,
+            "rule_id": basis.rule_id if basis else None,
+            "product_revision": basis.product_revision if basis else None,
+            "stale": stale,
             "events": [{"id": e.id, "actor_id": e.actor_id, "agent": e.agent,
                         "step": e.step, "outcome": e.outcome, "detail": json.loads(e.detail)}
                        for e in events]}
@@ -71,6 +89,7 @@ def start(actor: User, message: str) -> str:
         raise WorkflowError(422, "Specify one SKU and a procurement intent")
     sku = matches.pop()
     with Session(engine()) as db:
+        demo.require_quota(db, actor, "workflow")
         flow = Workflow(id=str(uuid4()), owner_id=actor.id, sku=sku,
                         request=message, status="running", updated_at=datetime.now(UTC))
         db.add(flow)
@@ -113,18 +132,24 @@ async def run(workflow_id: str, actor: User) -> dict[str, Any]:
         inbound = sum(int(o["quantity"]) for o in pending["inbound_purchases"])
         if min(on_hand, reorder, demand, inbound) < 0:
             raise ValueError("Invalid order quantities")
-        gap = max(0, reorder + demand - on_hand - inbound)
         with Session(engine()) as db:
             flow = load(db, workflow_id, actor)
             if flow.status != "running":
                 return snapshot(db, flow)
+            rule = catalog.active_rule(db, actor)
+            product = catalog.product(db, sku, actor)
+            product_revision = catalog.revision(db, product.id).revision
+            gap = catalog.calculate(rule, reorder=reorder, demand=demand,
+                                    stock=on_hand, inbound=inbound)
+            db.add(WorkflowBasis(workflow_id=flow.id, product_revision=product_revision,
+                                 rule_id=rule.id))
             event(db, flow, actor, "data_agent", "inventory", "ok",
                   {"source": inventory["source"], "output": stock})
             event(db, flow, actor, "data_agent", "open_orders", "ok",
                   {"source": orders["source"], "output": pending})
             event(db, flow, actor, "router", "handoff_to_procurement_agent", "ok")
             event(db, flow, actor, "procurement_agent", "calculate_gap", "ok",
-                  {"formula": "max(0, reorder_point + open_sales - inventory - inbound)",
+                  {"rule": catalog.rule_dict(rule), "product_revision": product_revision,
                    "quantity": gap})
             flow.inventory, flow.reorder_point = on_hand, reorder
             flow.open_sales, flow.inbound, flow.quantity = demand, inbound, gap
@@ -203,9 +228,18 @@ def submit(workflow_id: str, actor: User) -> dict[str, Any]:
             audit(db, actor, "workflow.submit", "denied")
             db.commit()
             raise WorkflowError(409, "Draft is not awaiting confirmation")
-        product = db.scalar(select(Product).where(Product.sku == flow.sku))
+        # All writers of the mock ERP rows lock the product first. Check the
+        # rule pointer and revision before creating any side effects.
+        try:
+            product = catalog.product(db, flow.sku, actor, lock=True)
+        except catalog.CatalogError:
+            product = None
         if product is None or flow.quantity is None:
             raise WorkflowError(409, "Product missing")
+        basis = db.get(WorkflowBasis, flow.id)
+        rule = catalog.active_rule(db, actor, lock=True)
+        if basis is None or basis.rule_id != rule.id or basis.product_revision != catalog.revision(db, product.id, lock=True).revision:
+            raise WorkflowError(409, "Draft data or rule changed; create a new draft")
         # Recheck supply and demand in the same transaction; another submitted draft
         # or a changed ERP record makes an old approval screen unsafe to confirm.
         from backend.models import SalesOrder
@@ -214,8 +248,9 @@ def submit(workflow_id: str, actor: User) -> dict[str, Any]:
         purchases = db.scalars(select(PurchaseOrder).where(
             PurchaseOrder.product_id == product.id,
             PurchaseOrder.status.in_(["pending", "approved"]))).all()
-        current_gap = max(0, product.reorder_point + sum(o.quantity for o in sales)
-                          - product.inventory - sum(o.quantity for o in purchases))
+        current_gap = catalog.calculate(rule, reorder=product.reorder_point,
+                demand=sum(o.quantity for o in sales), stock=product.inventory,
+                inbound=sum(o.quantity for o in purchases))
         if current_gap != flow.quantity:
             raise WorkflowError(409, "ERP quantities changed; create a new draft")
         purchase = PurchaseOrder(product_id=product.id, quantity=flow.quantity, status="pending")
@@ -226,6 +261,7 @@ def submit(workflow_id: str, actor: User) -> dict[str, Any]:
         db.flush()
         db.add(WorkflowSubmission(workflow_id=workflow_id, purchase_id=purchase.id,
                                   approval_id=approval.id))
+        catalog.revision(db, product.id, lock=True).revision += 1
         event(db, flow, actor, "procurement_agent", "human_confirmed_submission", "ok",
               {"purchase_id": purchase.id, "approval_id": approval.id})
         audit(db, actor, "workflow.submit", "ok")

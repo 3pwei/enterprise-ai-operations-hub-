@@ -1,2 +1,2 @@
 import { defineConfig } from '@playwright/test'
-export default defineConfig({ testDir: 'tests', use: { baseURL: 'http://127.0.0.1:4173', launchOptions: { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } }, webServer: { command: 'npm run dev -- --host 127.0.0.1 --port 4173', url: 'http://127.0.0.1:4173', reuseExistingServer: !process.env.CI } })
+export default defineConfig({ testDir: 'tests', testIgnore: ['live.spec.ts', 'public.spec.ts'], use: { baseURL: 'http://127.0.0.1:4173', launchOptions: { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } }, webServer: { command: 'npm run dev -- --host 127.0.0.1 --port 4173', url: 'http://127.0.0.1:4173', reuseExistingServer: !process.env.CI } })

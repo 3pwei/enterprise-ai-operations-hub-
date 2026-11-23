@@ -11,6 +11,8 @@ class Settings(BaseModel):
     mcp_signing_key: str = ""
     openai_api_key: str = ""
     openai_model: str = "gpt-4.1-mini"
+    public_demo_mode: bool = False
+    demo_cookie_secure: bool = True
 
     @classmethod
     def from_env(cls) -> "Settings":

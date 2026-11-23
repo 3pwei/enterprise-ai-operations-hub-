@@ -15,7 +15,7 @@ def create_server(name: str, service: str) -> FastMCP:
         stateless_http=True,
         json_response=True,
         transport_security=TransportSecuritySettings(
-            allowed_hosts=[f"{service}-mcp:{port}", f"localhost:{port}", f"127.0.0.1:{port}"]
+            allowed_hosts=[f"{service}-mcp:{port}", f"127.0.0.1:{port}"]
         ),
     )
 

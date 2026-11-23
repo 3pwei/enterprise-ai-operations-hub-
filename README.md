@@ -2,10 +2,12 @@
 
 A simulated manufacturing operations dashboard and agent demonstration. Docker Compose runs Data, ERP, and EIP as three separately running MCP services on its private network. FastAPI checks a demo bearer credential, mints a short-lived signed MCP capability, and records each tool call in PostgreSQL. OpenAI Agents SDK Function Calling selects tools when `OPENAI_API_KEY` is set. Otherwise a clearly labelled deterministic Mock Mode invokes the same MCP services. No real SAP or EIP connectivity.
 
-## Quick start
+## Run locally (developer setup)
+
+This repository has no public demo deployment. The following steps run the system on your own computer; they do not provide a shareable site.
 
 1. `cp .env.example .env`. Replace all three `replace-with-...` secrets with independent random strings (minimum 24 characters for demo tokens; 32 for the signing key). Leave `OPENAI_API_KEY=` blank for Mock Mode.
-2. `docker compose up --build --wait` (API: http://localhost:8000/docs; UI: http://localhost:5173).
+2. Run `docker compose up --build --wait` to start the database, API, UI, and three MCP services locally.
 3. Paste the `DEMO_ANALYST_TOKEN` or `DEMO_MANAGER_TOKEN` value from `.env` into the UI login field. Try “本月生產良率與品質異常”, “查詢 P-100 庫存”, “銷售營收”, or “簽核 1” with the manager token. The trace exposes tool name, input, computed output, and source.
 4. `docker compose down` when done. Add `-v` only if you intend to remove the database volume.
 
@@ -33,4 +35,4 @@ Compose starts six services: `db`, `api`, `frontend`, `data-mcp`, `erp-mcp`, and
 
 ## Verification
 
-Backend: `pytest -q && ruff check backend tests scripts && mypy backend --follow-imports=silent`. Frontend: `cd frontend && npm run build && npx playwright install chromium && npm run test:e2e`. Docker: `docker compose up -d --build --wait`, then `curl -fsS http://localhost:8000/health`, `curl -fsS -H "Authorization: Bearer <your token>" http://localhost:8000/api/dashboard`, and `docker compose exec -T api python -m scripts.smoke_mcp_http`. GitHub Actions runs backend, frontend, and Docker smoke jobs. See [API and MCP contracts](docs/contracts.md) for inputs and outputs.
+Backend: `pytest -q && ruff check backend tests scripts && mypy backend --follow-imports=silent`. Frontend: `cd frontend && npm run build && npx playwright install chromium && npm run test:e2e`. GitHub Actions checks backend, frontend, and the Docker Compose API/MCP integration. See [API and MCP contracts](docs/contracts.md) for inputs and outputs.

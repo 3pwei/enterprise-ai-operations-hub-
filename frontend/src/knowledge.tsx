@@ -6,7 +6,7 @@ type KnowledgeRequest = {
   message: string
   filters: { department?: Exclude<Department, ''> }
 }
-type Citation = {
+export type Citation = {
   document_id: string
   title: string
   version: number
@@ -43,20 +43,7 @@ export function KnowledgeResult({ result }: { result: KnowledgeAnswer }) {
     {result.model_fallback && <p className="text-xs text-slate-600">AI 選取暫時無法使用，顯示檢索到的文件段落。</p>}
     {result.status === 'answered' && <h4 className="font-semibold">文件規範</h4>}
     <p className="whitespace-pre-line break-words">{result.answer}</p>
-    {result.citations.length > 0 && <div>
-      <h4 className="font-semibold mb-2">引用來源</h4>
-      <ol className="list-decimal pl-5 space-y-2">
-        {result.citations.map(citation => <li key={`${citation.document_id}@${citation.version}#${citation.paragraph}`}>
-          <details className="rounded-lg border bg-white p-3">
-            <summary className="cursor-pointer">
-              {citation.title} · v{citation.version} · §{citation.paragraph} {citation.section}
-            </summary>
-            <blockquote className="mt-2 border-l-2 border-teal-200 pl-3 break-words">{citation.excerpt}</blockquote>
-            <p className="mt-2 text-xs text-slate-600">更新日期 {citation.updated_at.slice(0, 10)}</p>
-          </details>
-        </li>)}
-      </ol>
-    </div>}
+    <Citations citations={result.citations}/>
     <details className="rounded-lg border bg-white p-3">
       <summary className="cursor-pointer">RAG / MCP 執行追蹤</summary>
       {result.trace.map(item => <div key={item.request_id} className="mt-2 space-y-1 text-xs text-slate-600 break-words">
@@ -67,6 +54,23 @@ export function KnowledgeResult({ result }: { result: KnowledgeAnswer }) {
       </div>)}
     </details>
   </div>
+}
+
+export function Citations({ citations }: { citations: Citation[] }) {
+  return citations.length > 0 && <div>
+      <h4 className="font-semibold mb-2">引用來源</h4>
+      <ol className="list-decimal pl-5 space-y-2">
+        {citations.map(citation => <li key={`${citation.document_id}@${citation.version}#${citation.paragraph}`}>
+          <details className="rounded-lg border bg-white p-3">
+            <summary className="cursor-pointer">
+              {citation.title} · v{citation.version} · §{citation.paragraph} {citation.section}
+            </summary>
+            <blockquote className="mt-2 border-l-2 border-teal-200 pl-3 break-words">{citation.excerpt}</blockquote>
+            <p className="mt-2 text-xs text-slate-600">更新日期 {citation.updated_at.slice(0, 10)}</p>
+          </details>
+        </li>)}
+      </ol>
+    </div>
 }
 
 const examples = ['請購單需要填哪些欄位？', 'A 類料的循環盤點頻率？', '不合格品如何隔離？']

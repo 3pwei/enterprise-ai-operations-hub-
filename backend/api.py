@@ -1,18 +1,20 @@
+import json
 from contextlib import asynccontextmanager
 from typing import Literal
+from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
-from backend import catalog, demo, workflow
+from backend import catalog, demo, orchestration, workflow
 from backend.agent import respond
 from backend.config import settings
 from backend.db import session
 from backend.knowledge import agent as knowledge_agent
 from backend.knowledge.search import Question
-from backend.models import Audit, User, Workflow
+from backend.models import AgentExecution, Audit, User, Workflow
 from backend.security import credential_user, issue_capability
 from backend.seed import initialize
 
@@ -28,6 +30,7 @@ app = FastAPI(title="Enterprise AI Operations Hub", lifespan=lifespan)
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=2, max_length=1000)
+    draft_sku: str | None = Field(default=None, pattern=r"^P-[0-9]{1,8}$")
 
 
 class WorkflowRequest(BaseModel):
@@ -81,7 +84,9 @@ def workflow_failure(error: workflow.WorkflowError) -> HTTPException:
 
 @app.get("/api/demo/config")
 def demo_config() -> dict:
-    return {"public_demo_mode": settings().public_demo_mode}
+    config = settings()
+    return {"public_demo_mode": config.public_demo_mode,
+            "agent_mode": "llm" if config.openai_api_key and not config.public_demo_mode else "mock"}
 
 
 def set_demo_cookie(response: Response, workspace: str, role: str) -> None:
@@ -278,11 +283,29 @@ async def query_knowledge(body: Question, response: Response,
         raise HTTPException(502, "Knowledge service unavailable") from exc
 
 
+@app.get("/api/agent/executions/{run_id}")
+def get_execution(run_id: UUID, response: Response, user: User = Depends(credential_user),
+                  db: Session = Depends(session)) -> dict:
+    record = db.get(AgentExecution, str(run_id))
+    if settings().public_demo_mode or record is None or record.owner_id != user.id:
+        raise HTTPException(404, "Execution not found")
+    response.headers["Cache-Control"] = "no-store"
+    return json.loads(record.summary)
+
+
 @app.post("/api/chat")
 async def chat(body: ChatRequest, response: Response, user: User = Depends(credential_user),
                db: Session = Depends(session)) -> dict:
     if settings().public_demo_mode:
         raise HTTPException(403, "Chat is unavailable in public simulation")
+    response.headers["Cache-Control"] = "no-store"
+    if settings().openai_api_key:
+        try:
+            return await orchestration.respond(body.message, user, body.draft_sku)
+        except ValueError as exc:
+            raise HTTPException(422, "Draft authorization requires one matching SKU") from exc
+    if body.draft_sku:
+        raise HTTPException(409, "Use the deterministic Workflow Console in Mock Mode")
     if knowledge_agent.is_knowledge_intent(body.message):
         result = await query_knowledge(Question(message=body.message), response, user)
         return result.model_dump(mode="json")

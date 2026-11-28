@@ -45,7 +45,7 @@ Each MCP server runs as a stdio subprocess (`python -m backend.mcp_servers.data`
 
 - The bearer tokens are demo credentials configured by the operator. UI keeps the token only in React memory and sends it to the API; server signs a 120-second capability for MCP calls. MCP tools verify signature, active user, role, inputs, and log calls. Approval status is manager-only. Purchase submission is a separate, manager-only API transaction after explicit human confirmation; the LLM can queue a scoped draft for the server workflow through a bounded tool.
 - The developer Compose setup uses shared demo bearer tokens; **do not publish its ports**. The separate `deploy/compose.yaml` uses cookie-bound 24-hour visitor workspaces, isolated products/orders/rules/workflows, disabled shared tokens and operational chat, shared-document knowledge Q&A, bounded per-workspace operations, and only exposes HTTPS through Caddy. Visitors can switch simulated roles in their own workspace; this is not enterprise authentication. Public operation still requires origin-side protection against session creation floods, external backups, monitoring, and a hosting/security review.
-- See the [Operations Agent demo](docs/agent.md) for authorized drafts, trace records, the 30-case offline evaluation and the separate OpenAI smoke test.
+- See the [Operations Agent demo](docs/agent.md) for authorized drafts, trace records, the 30-case offline evaluation. The [Phase 06B verification guide](docs/live-agent-verification.md) covers the opt-in 20-case OpenAI evaluation and the current verification results.
 
 See [workflow design and demo](docs/workflow.md), [architecture](docs/architecture.md), [RAG design and fixed evaluation](docs/rag.md), and [deployment plan](docs/deployment.md).
 

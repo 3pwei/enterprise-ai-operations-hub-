@@ -216,3 +216,16 @@ def test_queued_draft_neither_forces_a_purchase_nor_outlives_failed_model(
         assert result["draft"]["status"] == "no_gap"
         assert result["draft"]["quantity"] == 0
         assert len(rows) == 1 and rows[0]["purchase_id"] is None
+
+
+def test_invalid_tool_arguments_never_reach_mcp(client, analyst, monkeypatch):
+    async def unreachable(*args):
+        pytest.fail("Invalid arguments reached MCP")
+
+    install(monkeypatch, [("order_status", {"order_id": -1})], unreachable)
+    response = client.post("/api/chat", headers=analyst, json={"message": "查訂單 -1"})
+    assert response.status_code == 200
+    execution = response.json()["execution"]
+    assert execution["status"] == "partial"
+    assert execution["trace"][0]["outcome"] == "invalid_arguments"
+    assert "order_id" not in execution["trace"][0]

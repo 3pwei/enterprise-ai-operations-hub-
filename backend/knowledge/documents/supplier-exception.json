@@ -1,0 +1,9 @@
+{
+  "id": "supplier-exception",
+  "title": "供應商例外核准細則",
+  "version": 4,
+  "department": "procurement",
+  "role": "manager",
+  "updated_at": "2025-01-01T00:00:00Z",
+  "expires_on": null
+}

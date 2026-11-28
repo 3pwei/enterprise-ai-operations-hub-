@@ -10,6 +10,8 @@ from backend import catalog, demo, workflow
 from backend.agent import respond
 from backend.config import settings
 from backend.db import session
+from backend.knowledge import agent as knowledge_agent
+from backend.knowledge.search import Question
 from backend.models import Audit, User, Workflow
 from backend.security import credential_user, issue_capability
 from backend.seed import initialize
@@ -266,10 +268,24 @@ async def dashboard(user: User = Depends(credential_user)) -> dict:
     return {"kpi": kpi, "issues": issues, "sales": sales}
 
 
+@app.post("/api/knowledge/query")
+async def query_knowledge(body: Question, response: Response,
+                          user: User = Depends(credential_user)) -> knowledge_agent.KnowledgeAnswer:
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return await knowledge_agent.answer(body, user)
+    except Exception as exc:
+        raise HTTPException(502, "Knowledge service unavailable") from exc
+
+
 @app.post("/api/chat")
-async def chat(body: ChatRequest, user: User = Depends(credential_user), db: Session = Depends(session)) -> dict:
+async def chat(body: ChatRequest, response: Response, user: User = Depends(credential_user),
+               db: Session = Depends(session)) -> dict:
     if settings().public_demo_mode:
         raise HTTPException(403, "Chat is unavailable in public simulation")
+    if knowledge_agent.is_knowledge_intent(body.message):
+        result = await query_knowledge(Question(message=body.message), response, user)
+        return result.model_dump(mode="json")
     try:
         return await respond(body.message, issue_capability(user), user.role)
     except PermissionError as exc:

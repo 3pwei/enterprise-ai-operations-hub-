@@ -1,6 +1,6 @@
 # Shareable simulation deployment
 
-No public instance or DNS record has been created. The production-shaped `deploy/compose.yaml` is provided for a dedicated Linux host; it is separate from the developer Compose file and does not expose the API, MCP or PostgreSQL ports.
+The production-shaped `deploy/compose.yaml` is provided for a dedicated Linux host; it is separate from the developer Compose file and does not expose the API, MCP or PostgreSQL ports.
 
 1. Obtain a dedicated Linux host with Docker Compose, persistent disk, external backups, inbound 80/443, monitoring and edge request throttling. Do not reuse a host running real trading or enterprise workloads. Size it using a measured trial run, not a guessed minimum.
 2. Point an unused subdomain (for example `ai.milespapa.com`) to the host via DNS. Configure HTTPS to the origin; Caddy manages origin certificates when its domain and ports are reachable. If proxied through Cloudflare, choose a mode that validates the origin certificate.
@@ -8,4 +8,8 @@ No public instance or DNS record has been created. The production-shaped `deploy
 4. Run `docker compose --env-file .env -f deploy/compose.yaml config` to inspect the generated configuration, then `docker compose --env-file .env -f deploy/compose.yaml up -d --build --wait`. Keep the repository and `.env` readable only to the operator. Make encrypted backups of the database volume to another location and test restoring them.
 5. From a different computer, load the HTTPS domain and start two private browser sessions. In one session change P-300 inventory and preview/publish a safety-stock rule; the other should retain the seed values. Submit only after switching to the simulated manager; verify the EIP state is `pending` and repeat submit to confirm one purchase ID. Confirm developer tokens do not authenticate in public mode. Inspect server logs, capacity limits, renewal, and backup job.
 
-The site is **not ready to advertise as publicly deployed** until the actual DNS/host, edge throttling, restore check and live external browser test are complete. The provided CI uses an HTTP loopback address solely to test the deployment Compose and overrides secure cookies for that test; the default deployment uses secure cookies and an HTTPS domain. The public role switch is intentionally a simulation, not production RBAC or SSO.
+Validate DNS, edge throttling, the restore procedure and a live external browser session before sharing a deployment. The provided CI uses an HTTP loopback address solely to test the deployment Compose and overrides secure cookies for that test; the default deployment uses secure cookies and an HTTPS domain. The public role switch is intentionally a simulation, not production RBAC or SSO.
+
+## Phase 05 database image
+
+Both Compose files use PostgreSQL 16 with the pgvector extension. New volumes are initialized on startup. A Phase 04 volume created on the Alpine PostgreSQL image should be migrated by restoring a logical backup into a fresh pgvector PostgreSQL 16 volume on a test instance first. The images can differ in locale and collation behavior. Verify restored application data, the knowledge query, and the procurement flow before switching a running instance. Retain the original volume for rollback. API startup creates the `vector` extension and new knowledge tables. If using a managed PostgreSQL instance or a reduced-privilege account, have a database administrator enable the extension before startup.

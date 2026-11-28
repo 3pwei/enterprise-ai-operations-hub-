@@ -1,10 +1,20 @@
 import { useEffect, useState } from 'react'
-import { KnowledgePanel, KnowledgeResult, type KnowledgeAnswer } from './knowledge'
+import { Citations, KnowledgePanel, KnowledgeResult, type Citation, type KnowledgeAnswer } from './knowledge'
 import { Activity, Bot, Database, Factory, LockKeyhole, Send, ShieldCheck, TrendingUp } from 'lucide-react'
 
 type Result = { source: string; data: Record<string, unknown> }
 type Trace = { tool: string; input: Record<string, unknown>; source: string; output: Record<string, unknown> }
-type Chat = { agent?: undefined; mode: 'mock' | 'llm'; answer: string; trace: Trace[] } | KnowledgeAnswer
+type Chat = { agent?: undefined; mode: 'mock' | 'llm'; answer: string; trace: Trace[] } | KnowledgeAnswer | AgentAnswer
+type AgentAnswer = {
+  agent: 'operations'; mode: 'llm'; answer: string; citations: Citation[]
+  draft: Pick<Workflow, 'id' | 'sku' | 'status' | 'quantity' | 'inventory' | 'reorder_point' | 'open_sales' | 'inbound' | 'rule_id'> | null
+  execution: {
+    id: string; status: string; elapsed_ms: number; error: string | null
+    tokens: { input: number; output: number; total: number } | null
+    trace: { tool: string; source: string; outcome: string; elapsed_ms: number; matches?: number }[]
+  }
+}
+const procurementExample = '查詢 P-300 庫存，參考採購 SOP，評估是否需要採購，並建立待確認的採購草稿。'
 type Dashboard = { kpi: Result; issues: Result; sales: Result }
 type WorkflowEvent = { id: number; agent: string; step: string; outcome: string; detail: Record<string, unknown> }
 type Workflow = { id: string; owner_id: number; sku: string; status: string; inventory: number | null; reorder_point: number | null; open_sales: number | null; inbound: number | null; quantity: number | null; error: string | null; purchase_id: number | null; approval_id: number | null; rule_id: number | null; product_revision: number | null; stale: boolean; events: WorkflowEvent[] }
@@ -27,6 +37,8 @@ export default function App() {
   const [ready, setReady] = useState(false)
   const [dashboard, setDashboard] = useState<Dashboard | null>(null)
   const [message, setMessage] = useState('')
+  const [allowDraft, setAllowDraft] = useState(false)
+  const [llmEnabled, setLlmEnabled] = useState(false)
   const [conversation, setConversation] = useState<{ question: string; result: Chat }[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -49,7 +61,7 @@ export default function App() {
   const [catalogChanges, setCatalogChanges] = useState<CatalogChange[]>([])
   const [publicDemo, setPublicDemo] = useState(false)
   useEffect(() => { fetch('/api/demo/config').then(r => r.json()).then(
-    data => setPublicDemo(Boolean(data.public_demo_mode))).catch(() => {}) }, [])
+    data => { setPublicDemo(Boolean(data.public_demo_mode)); setLlmEnabled(data.agent_mode === "llm") }).catch(() => {}) }, [])
 
   async function refreshCatalog() {
     const [items, rules, changes] = await Promise.all([
@@ -113,7 +125,7 @@ export default function App() {
   }
 
   async function switchRole() {
-    if (!publicDemo) { setReady(false); setToken(''); setRole(''); setWorkflows([]); setConversation([]); setApproval({}); return }
+    if (!publicDemo) { setReady(false); setToken(''); setRole(''); setAllowDraft(false); setMessage(''); setWorkflows([]); setConversation([]); setApproval({}); return }
     setError(''); setWorkflowLoading(true)
     try {
       const nextRole = role === 'analyst' ? 'manager' : 'analyst'
@@ -153,12 +165,16 @@ export default function App() {
     } catch (err) { setError(String(err)) } finally { setWorkflowLoading(false) }
   }
 
-  async function send(question = message) {
+  async function send(question = message, authorizeDraft = false) {
     if (!question.trim() || loading) return
-    setError(''); setLoading(true); setMessage('')
+    const skus = new Set(question.toUpperCase().match(/\bP-[0-9]+\b/g))
+    const draftSku = authorizeDraft && skus.size === 1 ? [...skus][0] : undefined
+    if (authorizeDraft && !draftSku) { setError('請在訊息中指定一個 SKU。'); return }
+    setError(''); setLoading(true); setMessage(''); setAllowDraft(false)
     try {
-      const result = await request<Chat>('/api/chat', token, { method: 'POST', body: JSON.stringify({ message: question }) })
+      const result = await request<Chat>('/api/chat', token, { method: 'POST', body: JSON.stringify({ message: question, draft_sku: draftSku }) })
       setConversation(previous => [...previous, { question, result }])
+      if (result.agent === 'operations' && result.draft) await refreshWorkflows()
     } catch (err) { setError(String(err)); setMessage(question) } finally { setLoading(false) }
   }
 
@@ -166,19 +182,19 @@ export default function App() {
     <header className="border-b bg-white"><div className="max-w-6xl mx-auto px-5 py-5 flex items-center gap-3"><div className="p-2 rounded-xl bg-ink text-white"><Factory size={22}/></div><div><h1 className="font-bold text-xl">Enterprise AI Operations Hub</h1><p className="text-xs text-slate-500">製造業營運情報 · ERP / EIP / Data MCP</p></div><span className="ml-auto text-xs rounded-full bg-teal-50 text-teal-800 px-3 py-1">模擬資料 Demo</span></div></header>
     <main className="max-w-6xl mx-auto px-5 py-8">
       {!ready ? <section className="max-w-md mx-auto mt-12 bg-white rounded-2xl border p-7 shadow-sm"><LockKeyhole className="text-accent mb-4"/><h2 className="text-xl font-semibold mb-2">{publicDemo ? '開始獨立模擬工作階段' : '輸入 Demo 憑證'}</h2><p className="text-sm text-slate-500 mb-5">{publicDemo ? '每位訪客使用隔離的模擬資料；角色切換僅為展示，沒有真實採購權限。工作階段 24 小時後到期。' : '請從本機 .env 取得 analyst 或 manager token；不會儲存在瀏覽器中。'}</p>{!publicDemo && <input aria-label="Demo bearer token" type="password" value={token} onChange={e => setToken(e.target.value)} onKeyDown={e => e.key === 'Enter' && signIn()} placeholder="Demo bearer token" className="border rounded-lg p-3 w-full mb-3"/>}<button onClick={signIn} disabled={loading} className="w-full bg-ink text-white p-3 rounded-lg disabled:opacity-50">{loading ? '連線中…' : publicDemo ? '開始模擬' : '開啟工作台'}</button></section> : <>
-        <div className="mb-7 flex justify-between gap-4"><div><p className="uppercase tracking-widest text-accent font-semibold text-xs">Operations overview</p><h2 className="text-2xl font-bold mt-1">{publicDemo ? '採購模擬工作台' : '營運總覽'}</h2><p className="text-sm text-slate-500 mt-1">{publicDemo ? `展示身分：${role}；資料僅供模擬，不會送出真實訂單。` : '以下指標由資料庫計算，來源標示於卡片下方。'}</p></div><div className="flex flex-wrap justify-end items-start gap-2"><a href="#knowledge" className="border rounded-lg px-3 py-2 text-sm">知識問答</a><button className="border rounded-lg px-3 py-2 text-sm" onClick={switchRole}>{publicDemo ? `切換為 ${role === 'analyst' ? 'manager' : 'analyst'}` : '切換身分'}</button></div></div>
+        <div className="mb-7 flex justify-between gap-4"><div><p className="uppercase tracking-widest text-accent font-semibold text-xs">Operations overview</p><h2 className="text-2xl font-bold mt-1">{publicDemo ? '採購模擬工作台' : '營運總覽'}</h2><p className="text-sm text-slate-500 mt-1">{publicDemo ? `展示身分：${role}；資料僅供模擬，不會送出真實訂單。` : '以下指標由資料庫計算，來源標示於卡片下方。'}</p></div><div className="flex flex-wrap justify-end items-start gap-2"><a href="#knowledge" className="border rounded-lg px-3 py-2 text-sm">知識問答</a><button className="border rounded-lg px-3 py-2 text-sm" onClick={switchRole} disabled={loading || workflowLoading}>{publicDemo ? `切換為 ${role === 'analyst' ? 'manager' : 'analyst'}` : '切換身分'}</button></div></div>
         {!publicDemo && <><div className="grid sm:grid-cols-3 gap-4 mb-7">
           <Stat icon={<Activity size={19}/>} label="整體良率" value={`${dashboard?.kpi.data.yield_pct ?? '—'}%`} source={dashboard?.kpi.source}/>
           <Stat icon={<ShieldCheck size={19}/>} label="品質異常" value={String((dashboard?.issues.data.items as unknown[] | undefined)?.length ?? '—')} source={dashboard?.issues.source}/>
           <Stat icon={<TrendingUp size={19}/>} label="銷售營收" value={`NT$ ${Number(dashboard?.sales.data.revenue ?? 0).toLocaleString()}`} source={dashboard?.sales.source}/>
         </div>
-        <section className="grid lg:grid-cols-[1.45fr_1fr] gap-6"><div className="bg-white border rounded-2xl overflow-hidden shadow-sm"><div className="px-5 py-4 border-b flex items-center gap-2"><Bot className="text-accent" size={20}/><h3 className="font-semibold">營運助理</h3></div><div className="px-5 py-5 space-y-5 min-h-[330px] max-h-[560px] overflow-auto" aria-live="polite">{conversation.length === 0 && <><p className="text-slate-600 text-sm">詢問生產良率、品質異常、銷售表現或指定的 ERP / EIP 資料。</p><div className="flex flex-wrap gap-2">{['本月生產良率與品質異常', '查詢 P-100 庫存', '銷售營收', '簽核規則'].map(q => <button key={q} onClick={() => send(q)} className="text-xs rounded-full bg-slate-100 hover:bg-teal-50 px-3 py-2">{q}</button>)}</div></>}{conversation.map((item, index) => <div key={index} className="space-y-3"><div className="ml-auto bg-ink text-white rounded-xl p-3 text-sm max-w-[85%] w-fit">{item.question}</div><div className="bg-slate-50 rounded-xl p-4 text-sm whitespace-pre-wrap break-words">{item.result.agent === 'knowledge' ? <KnowledgeResult result={item.result}/> : <><p className="text-xs font-bold text-accent mb-2">{item.result.mode === 'mock' ? 'MOCK MODE · 非真實 LLM' : 'AI AGENT'}</p>{item.result.answer}<div className="mt-4 space-y-2">{item.result.trace.map((t, i) => <details key={i} className="bg-white border rounded-lg p-2"><summary className="cursor-pointer text-xs font-medium">工具 {i + 1}: {t.tool} · {t.source}</summary><pre className="text-xs overflow-auto mt-2">{JSON.stringify({ input: t.input, output: t.output }, null, 2)}</pre></details>)}</div></>}</div></div>)}</div><form onSubmit={e => { e.preventDefault(); send() }} className="border-t p-4 flex gap-2"><input aria-label="提問" className="border rounded-lg p-3 text-sm flex-1 min-w-0" placeholder="例如：P-100 庫存狀況？" value={message} onChange={e => setMessage(e.target.value)}/><button aria-label="送出" disabled={loading} className="bg-accent text-white rounded-lg px-4 disabled:opacity-50"><Send size={18}/></button></form></div><aside className="space-y-4"><div className="bg-ink text-white rounded-2xl p-6"><Database size={21} className="text-teal-300"/><h3 className="font-semibold mt-3 mb-2">資料流與權限</h3><p className="text-sm text-slate-300 leading-7">自然語言 → Function Calling → 獨立 MCP Server → 模擬企業資料庫。工具依角色授權，呼叫紀錄寫入稽核表。</p></div><div className="bg-white border rounded-2xl p-6"><h3 className="font-semibold mb-3">資料來源</h3><ul className="text-sm text-slate-600 space-y-2"><li>Data MCP · 生產、品質、銷售</li><li>ERP MCP · 庫存、訂單</li><li>EIP MCP · 簽核規則與狀態</li></ul></div></aside></section>
+        <section className="grid lg:grid-cols-[1.45fr_1fr] gap-6"><div className="bg-white border rounded-2xl overflow-hidden shadow-sm"><div className="px-5 py-4 border-b flex items-center gap-2"><Bot className="text-accent" size={20}/><h3 className="font-semibold">營運助理</h3></div><div className="px-5 py-5 space-y-5 min-h-[330px] max-h-[560px] overflow-auto" aria-live="polite">{conversation.length === 0 && <><p className="text-slate-600 text-sm">詢問生產良率、品質異常、銷售表現或指定的 ERP / EIP 資料。</p><div className="flex flex-wrap gap-2">{['本月生產良率與品質異常', '查詢 P-100 庫存', '銷售營收', '簽核規則'].map(q => <button key={q} onClick={() => send(q)} className="text-xs rounded-full bg-slate-100 hover:bg-teal-50 px-3 py-2">{q}</button>)}</div></>}{conversation.map((item, index) => <div key={index} className="space-y-3"><div className="ml-auto bg-ink text-white rounded-xl p-3 text-sm max-w-[85%] w-fit">{item.question}</div><div className="bg-slate-50 rounded-xl p-4 text-sm whitespace-pre-wrap break-words">{item.result.agent === 'knowledge' ? <KnowledgeResult result={item.result}/> : item.result.agent === 'operations' ? <AgentResult result={item.result}/> : <><p className="text-xs font-bold text-accent mb-2">{item.result.mode === 'mock' ? 'MOCK MODE · 非真實 LLM' : 'AI AGENT'}</p>{item.result.answer}<div className="mt-4 space-y-2">{item.result.trace.map((t, i) => <details key={i} className="bg-white border rounded-lg p-2"><summary className="cursor-pointer text-xs font-medium">工具 {i + 1}: {t.tool} · {t.source}</summary><pre className="text-xs overflow-auto mt-2">{JSON.stringify({ input: t.input, output: t.output }, null, 2)}</pre></details>)}</div></>}</div></div>)}</div><form onSubmit={e => { e.preventDefault(); send(message, allowDraft) }} className="border-t p-4 flex flex-wrap gap-2"><input aria-label="提問" className="border rounded-lg p-3 text-sm flex-1 min-w-0" placeholder="例如：P-100 庫存狀況？" value={message} onChange={e => setMessage(e.target.value)}/><button aria-label="送出" disabled={loading} className="bg-accent text-white rounded-lg px-4 disabled:opacity-50"><Send size={18}/></button>{llmEnabled && <div className="flex flex-wrap items-center gap-3 w-full text-xs"><button type="button" onClick={() => setMessage(procurementExample)} className="text-accent">填入 P-300 採購範例</button><label><input type="checkbox" checked={allowDraft} onChange={e => setAllowDraft(e.target.checked)}/> 允許建立此 SKU 的採購草稿</label></div>}</form></div><aside className="space-y-4"><div className="bg-ink text-white rounded-2xl p-6"><Database size={21} className="text-teal-300"/><h3 className="font-semibold mt-3 mb-2">資料流與權限</h3><p className="text-sm text-slate-300 leading-7">自然語言 → Function Calling → 獨立 MCP Server → 模擬企業資料庫。工具依角色授權，呼叫紀錄寫入稽核表。</p></div><div className="bg-white border rounded-2xl p-6"><h3 className="font-semibold mb-3">資料來源</h3><ul className="text-sm text-slate-600 space-y-2"><li>Data MCP · 生產、品質、銷售</li><li>ERP MCP · 庫存、訂單</li><li>EIP MCP · 簽核規則與狀態</li></ul></div></aside></section>
         </>}
         <KnowledgePanel key={role} publicDemo={publicDemo}
           query={input => request<KnowledgeAnswer>('/api/knowledge/query', token, {
             method: 'POST', body: JSON.stringify(input),
           })}/>
-        <section className="mt-8 bg-white border rounded-2xl p-6 shadow-sm" aria-label="Workflow Console">
+        <section id="workflows" className="mt-8 bg-white border rounded-2xl p-6 shadow-sm" aria-label="Workflow Console">
           <div className="flex flex-wrap justify-between gap-3"><div><h2 className="text-xl font-bold">採購 Workflow Console</h2><p className="text-sm text-slate-500 mt-1">Mock Mode · 確定性規則；只有 manager 可人工提交，提交後仍須 EIP 簽核。</p></div><button onClick={() => refreshWorkflows().catch(err => setError(String(err)))} className="text-sm text-accent">重新整理</button></div>
           <form onSubmit={e => { e.preventDefault(); createWorkflow() }} className="flex flex-wrap gap-2 mt-5"><input aria-label="採購需求" value={workflowMessage} onChange={e => setWorkflowMessage(e.target.value)} placeholder="例如：請評估採購 P-300" className="border rounded-lg p-3 flex-1 min-w-[220px]"/><button disabled={workflowLoading} className="bg-accent text-white rounded-lg px-5 disabled:opacity-50">建立採購草稿</button></form>
           <div className="space-y-4 mt-6" aria-live="polite">{workflows.length === 0 && <p className="text-sm text-slate-500">目前沒有任務</p>}{workflows.map(flow => <article key={flow.id} className="rounded-xl border p-4 space-y-3"><div className="flex justify-between gap-3"><h3 className="font-semibold">{flow.sku} · {flow.status}</h3><span className="text-xs text-slate-500 break-all">{flow.id}</span></div><p className="text-sm">採購缺口：{flow.quantity ?? '計算中'}；庫存 {flow.inventory ?? '—'} + 待交採購 {flow.inbound ?? '—'}；補貨基準 {flow.reorder_point ?? '—'} + 未交銷售 {flow.open_sales ?? '—'}</p><p className="text-xs text-slate-500">規則版本 #{flow.rule_id ?? '—'} · 產品修訂 {flow.product_revision ?? '—'}</p>{flow.stale && <p role="status" className="text-amber-800">資料或規則已更新：請重新建立草稿，舊草稿不能提交。</p>}{flow.error && <p role="status" className="text-red-700 text-sm">{flow.error}</p>}{flow.purchase_id && <p className="text-sm">採購單 #{flow.purchase_id} · EIP 簽核 #{flow.approval_id} · {approval[flow.id] ?? '待查詢'}</p>}<div className="flex flex-wrap gap-2">{flow.status === 'awaiting_confirmation' && role === 'manager' && <button disabled={workflowLoading || flow.stale} onClick={() => action(flow.id, 'submit')} className="bg-ink text-white rounded-lg px-3 py-2 text-sm disabled:opacity-50">人工確認並提交</button>}{flow.status === 'failed' && <button disabled={workflowLoading} onClick={() => action(flow.id, 'retry')} className="border rounded-lg px-3 py-2 text-sm">重新執行</button>}{['running', 'failed', 'awaiting_confirmation'].includes(flow.status) && <button disabled={workflowLoading} onClick={() => action(flow.id, 'cancel')} className="border rounded-lg px-3 py-2 text-sm">取消</button>}{flow.status === 'submitted' && role === 'manager' && <button disabled={workflowLoading} onClick={() => checkApproval(flow.id)} className="border rounded-lg px-3 py-2 text-sm">查詢 EIP 簽核</button>}</div><details><summary className="text-sm cursor-pointer">Agent / MCP 執行歷程（{flow.events.length}）</summary><ol className="mt-2 space-y-2">{flow.events.map(evt => <li key={evt.id} className="text-xs border-l-2 pl-3 break-words">{evt.agent} · {evt.step} · {evt.outcome}<pre className="overflow-auto mt-1">{JSON.stringify(evt.detail, null, 2)}</pre></li>)}</ol></details></article>)}</div>
@@ -208,6 +224,29 @@ export default function App() {
         </section>
       </>}{error && <p role="alert" className="mt-4 text-red-700 text-sm">{error}</p>}
     </main>
+  </div>
+}
+
+function AgentResult({ result }: { result: AgentAnswer }) {
+  const { execution, draft } = result
+  return <div className="space-y-3">
+    <p className="text-xs font-bold text-accent">LLM Agent · {execution.status}</p>
+    <p>{result.answer}</p>
+    {draft && <div className="rounded-lg border bg-white p-3">
+      <p>{draft.sku} · {draft.status} · 採購缺口 {draft.quantity ?? '—'}</p>
+      <p className="text-xs">ERP 庫存 {draft.inventory ?? '—'} · 採購規則版本 {draft.rule_id ?? '—'}</p>
+      <a href="#workflows" className="text-accent">前往 Workflow Console</a>
+    </div>}
+    <Citations citations={result.citations}/>
+    <details className="rounded-lg border bg-white p-3">
+      <summary className="cursor-pointer">Agent 執行追蹤 · {execution.elapsed_ms} ms</summary>
+      <p className="mt-2 text-xs break-all">{execution.id}</p>
+      {execution.tokens && <p className="text-xs">Token 共 {execution.tokens.total} · 輸入 {execution.tokens.input} · 輸出 {execution.tokens.output}</p>}
+      {execution.error && <p className="text-xs text-red-700">{execution.error}</p>}
+      <ol className="mt-2 space-y-1 text-xs">
+        {execution.trace.map((step, index) => <li key={index}>{step.tool} · {step.source} · {step.outcome} · {step.elapsed_ms} ms{step.matches !== undefined && ` · ${step.matches} 段引用`}</li>)}
+      </ol>
+    </details>
   </div>
 }
 

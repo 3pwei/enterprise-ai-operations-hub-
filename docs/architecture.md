@@ -25,4 +25,9 @@ The deterministic procurement path calls real MCP tools but the Data/Procurement
 
 ## Knowledge route
 
-FastAPI routes policy questions from developer chat and explicit knowledge requests to a read-only Knowledge MCP subprocess. It verifies the capability and filters current, authorized corpus rows before pgvector scoring. Optional AI selection sees only those allowed passages. Both the answer and citations are assembled from the same returned excerpts. Public sessions can search the shared synthetic corpus in Mock Mode. See the [RAG design](rag.md) for versioning, retrieval scoring, and the permissions matrix.
+FastAPI routes Mock Mode policy questions and explicit knowledge requests to a read-only Knowledge MCP subprocess. It verifies the capability and filters current, authorized corpus rows before pgvector scoring. Optional AI selection sees only those allowed passages. Both the answer and citations are assembled from the same returned excerpts. Public sessions can search the shared synthetic corpus in Mock Mode. See the [RAG design](rag.md) for versioning, retrieval scoring, and the permissions matrix.
+
+
+## Developer LLM orchestration
+
+Developer chat uses a single Agents SDK agent when configured with an API key. The model chooses among Data, ERP, EIP and Knowledge tools over multiple turns. Every read crosses the existing MCP capability boundary. A separately authorized draft request passes to the deterministic workflow after ERP and SOP evidence are present. The server records bounded execution metadata in PostgreSQL and returns a run ID, citations, and the workflow result to the caller. See the [Operations Agent demo](agent.md).

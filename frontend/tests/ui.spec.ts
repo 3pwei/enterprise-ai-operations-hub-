@@ -53,3 +53,44 @@ test('procurement draft requires manager confirmation and shows EIP status', asy
   await page.getByRole('button', { name: '查詢 EIP 簽核' }).click()
   await expect(page.getByText(/EIP 簽核 #2 · pending/)).toBeVisible()
 })
+
+test('LLM procurement shows authorized draft, citations and sanitized execution', async ({ page }) => {
+  await page.route('**/api/demo/config', route => route.fulfill({ json: { public_demo_mode: false, agent_mode: 'llm' } }))
+  await page.route('**/api/me', route => route.fulfill({ json: { id: 1, role: 'analyst' } }))
+  const metric = { source: 'data.batches', data: {} }
+  await page.route('**/api/dashboard', route => route.fulfill({ json: { kpi: metric, issues: metric, sales: metric } }))
+  let created = false
+  const draft = { id: 'agent-draft', sku: 'P-300', status: 'awaiting_confirmation', quantity: 16,
+    inventory: 4, reorder_point: 20, open_sales: 0, inbound: 0, rule_id: 1, events: [] }
+  await page.route('**/api/workflows', route => route.fulfill({ json: created ? [draft] : [] }))
+  await page.route('**/api/chat', route => {
+    const body = route.request().postDataJSON()
+    expect(body.message).toContain('P-300')
+    expect(body.draft_sku).toBe('P-300')
+    created = true
+    return route.fulfill({ json: {
+      agent: 'operations', mode: 'llm', answer: 'SOP 要求查核庫存與未交採購量。', draft,
+      citations: [{ document_id: 'purchase-sop', title: '採購 SOP', version: 1, paragraph: '1',
+        section: '請購前置檢查', excerpt: '查核庫存與未交採購量。', updated_at: '2026-11-28' }],
+      execution: { id: 'agent-run', status: 'completed', elapsed_ms: 310, error: null,
+        tokens: { input: 100, output: 20, total: 120 },
+        trace: [{ tool: 'knowledge_search', source: 'knowledge.documents', outcome: 'ok', elapsed_ms: 80, matches: 1 }] },
+    } })
+  })
+  await page.goto('/')
+  await page.getByLabel('Demo bearer token').fill('demo-analyst-token')
+  await page.getByRole('button', { name: '開啟工作台' }).click()
+  await page.getByRole('button', { name: '填入 P-300 採購範例' }).click()
+  const authorization = page.getByLabel('允許建立此 SKU 的採購草稿')
+  await expect(authorization).not.toBeChecked()
+  await authorization.check()
+  await page.getByLabel('送出').click()
+  await expect(page.getByText('LLM Agent · completed')).toBeVisible()
+  await expect(page.getByText('採購 SOP · v1', { exact: false })).toBeVisible()
+  await page.getByText('Agent 執行追蹤 · 310 ms').click()
+  await expect(page.getByText('Token 共 120', { exact: false })).toBeVisible()
+  await expect(page.getByText('knowledge_search · knowledge.documents · ok', { exact: false })).toBeVisible()
+  await page.getByRole('link', { name: '前往 Workflow Console' }).click()
+  await expect(page.getByRole('heading', { name: 'P-300 · awaiting_confirmation' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '人工確認並提交' })).toHaveCount(0)
+})

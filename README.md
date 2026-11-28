@@ -1,6 +1,6 @@
 # Enterprise AI Operations Hub
 
-A simulated manufacturing operations dashboard, procurement workflow, and knowledge assistant. Data, ERP, EIP, and Knowledge MCP tools run as stdio subprocesses; FastAPI checks credentials, mints short-lived signed MCP capabilities, and records tool calls in PostgreSQL. Mock Mode is deterministic and requires no paid LLM. The existing read-only chat can use Agents SDK Function Calling when configured. Procurement routing is deterministic, not a live multi-agent handoff. No real SAP or EIP connectivity.
+A simulated manufacturing operations dashboard, procurement workflow, and knowledge assistant. Data, ERP, EIP, and Knowledge MCP tools run as stdio subprocesses; FastAPI checks credentials, mints short-lived signed MCP capabilities, and records tool calls in PostgreSQL. Mock Mode is deterministic and requires no paid LLM. With an API key, a single Agents SDK agent selects MCP tools across systems and can request a user-authorized procurement draft. The workflow calculates the gap and a manager confirms submission. All ERP and EIP records are simulated.
 
 ## Run locally (developer setup)
 
@@ -8,7 +8,7 @@ The developer and public simulation configurations run separately. These steps s
 
 1. `cp .env.example .env`. Replace all three `replace-with-...` secrets with independent random strings (minimum 24 characters for demo tokens; 32 for the signing key). Leave `OPENAI_API_KEY=` blank for Mock Mode.
 2. Run `docker compose up --build --wait` to start the database, API, and UI locally.
-3. Paste the `DEMO_ANALYST_TOKEN` or `DEMO_MANAGER_TOKEN` value from `.env` into the UI login field. Try “本月生產良率與品質異常”, “查詢 P-100 庫存”, “銷售營收”, or “簽核 1” with the manager token. The trace exposes tool name, input, computed output, and source.
+3. Paste the `DEMO_ANALYST_TOKEN` or `DEMO_MANAGER_TOKEN` value from `.env` into the UI login field. Try “本月生產良率與品質異常”, “查詢 P-100 庫存”, “銷售營收”, or “簽核 1” with the manager token. Mock chat shows the selected tools and synthetic outputs.
 4. In Workflow Console, enter “請評估採購 P-300”. Inventory 4, reorder point 20, and no unfulfilled orders yield a draft for 16 units. Sign in with the manager token, refresh, inspect the draft, click **人工確認並提交**, then **查詢 EIP 簽核**. The simulated EIP status is `pending`, not an approval. P-100 has an existing pending purchase of 50, so its calculated gap is zero.
    As manager, edit P-300 inventory to 10 in **模擬資料與採購規則**. The old 16-unit draft becomes stale; a new draft calculates 10. Preview the safety-stock template with 5 units, publish a new rule version, and create a new draft for 15. The original snapshot and rule ID remain in its event history.
 5. Open **企業知識問答**, choose **請購單需要填哪些欄位？**, and expand the SOP citation and MCP trace. The developer analyst and manager can compare department access using the [RAG demo](docs/rag.md#reproduce-the-demo).
@@ -25,9 +25,11 @@ flowchart TD
   Agent --> Data[Data MCP]
   Agent --> ERP[ERP MCP]
   Agent --> EIP[EIP MCP]
+  Agent --> KMCP[Knowledge MCP]
+  Agent --> WF
   Data & ERP & EIP --> DB[(PostgreSQL: simulated records and audit)]
   API --> Knowledge[Knowledge Agent]
-  Knowledge --> KMCP[Knowledge MCP]
+  Knowledge --> KMCP
   KMCP --> DB
   API --> WF[Durable procurement workflow]
   WF --> ERP
@@ -41,9 +43,9 @@ Each MCP server runs as a stdio subprocess (`python -m backend.mcp_servers.data`
 
 ## Security boundaries and limitations
 
-- The bearer tokens are demo credentials configured by the operator. UI keeps the token only in React memory and sends it to the API; server signs a 120-second capability for MCP calls. MCP tools verify signature, active user, role, inputs, and log calls. Approval status is manager-only. Purchase submission is a separate, manager-only API transaction after explicit human confirmation; the LLM has no write tool or SQL execution tool.
+- The bearer tokens are demo credentials configured by the operator. UI keeps the token only in React memory and sends it to the API; server signs a 120-second capability for MCP calls. MCP tools verify signature, active user, role, inputs, and log calls. Approval status is manager-only. Purchase submission is a separate, manager-only API transaction after explicit human confirmation; the LLM can queue a scoped draft for the server workflow through a bounded tool.
 - The developer Compose setup uses shared demo bearer tokens; **do not publish its ports**. The separate `deploy/compose.yaml` uses cookie-bound 24-hour visitor workspaces, isolated products/orders/rules/workflows, disabled shared tokens and operational chat, shared-document knowledge Q&A, bounded per-workspace operations, and only exposes HTTPS through Caddy. Visitors can switch simulated roles in their own workspace; this is not enterprise authentication. Public operation still requires origin-side protection against session creation floods, external backups, monitoring, and a hosting/security review.
-- LLM behavior and numerical quality in live chat mode require a real API key and separate evaluation. The Phase 04 procurement workflow uses deterministic routing and arithmetic even if a key exists; no live multi-agent LLM evaluation has been performed. The test suite exercises deterministic Mock Mode; passing it does not claim the live LLM was tested. Workflow state and events persist; existing chat remains stateless.
+- See the [Operations Agent demo](docs/agent.md) for authorized drafts, trace records, the 30-case offline evaluation and the separate OpenAI smoke test.
 
 See [workflow design and demo](docs/workflow.md), [architecture](docs/architecture.md), [RAG design and fixed evaluation](docs/rag.md), and [deployment plan](docs/deployment.md).
 

@@ -12,16 +12,16 @@
 
 - Authenticated developer `POST /api/chat` routes to the single SDK agent when the key is configured. Data, ERP, EIP and Knowledge tools use the existing stdio MCP transport, server permissions and 120-second signed capability. Explicit `/api/knowledge/query` retains the independent knowledge agent.
 - Granting a draft requires `draft_sku` matching the sole SKU named in the user's message. The agent gets a draft-request tool only for such an authorized run. The server checks the actor role, a successful inventory lookup for that SKU, and an authorized citation from the current purchase SOP. The tool queues at most one draft per run. The workflow starts only after the model loop completes and the server revalidates the actor. Existing workflow creation, arithmetic, revisions and submission remain authoritative. The model never supplies quantities, order IDs for writes, SQL or a submission instruction.
-- The orchestration budget is seven model turns, eight tool calls, 700 output tokens per model response, six seconds per MCP call, 15 seconds per API request, and 35 seconds for the model loop. Orchestration calls are single-attempt. The existing workflow retains its own bounded ERP retry policy.
+- The orchestration budget is seven model turns, eight tool calls, 700 output tokens per model response, six seconds per MCP call, 15 seconds per API request, and 35 seconds for the model loop. Orchestration calls are single-attempt. Provider timeouts, rate limits and connection failures have distinct sanitized error codes. Invalid tool arguments are rejected before the MCP call. The existing workflow retains its own bounded ERP retry policy.
 - The agent treats retrieved passages as data. Prompt injection can still degrade generated wording or tool selection. The allowlist, per-tool validation, server-side RBAC and draft gate enforce action bounds independently of wording. The UI presents the server-generated draft status, quantity and citations separately.
 - `GET /api/agent/executions/{id}` returns the saved run summary to the run owner, including sanitized failure codes. The database stores no user prompt, answer, raw tool arguments, raw MCP outputs, credentials or private reasoning in the execution record. SDK trace export and provider response storage are disabled for this route. An interrupted process can leave a run marked `running`. Token totals can be unavailable when the provider returns no usage.
 
 ## Reproduce the checks
 
 - Run `pytest -q tests/test_orchestration.py`. The 30 fixed prompts in `tests/fixtures/agent_cases.json` exercise scripted SDK tool calls and role-dependent tool exposure. Separate integration cases invoke actual MCP subprocesses and the purchase Workflow. The fixed suite measures orchestration wiring against scripted choices.
-- Run `python scripts/smoke_live_agent.py` separately with `OPENAI_API_KEY` in the environment. The script uses a temporary SQLite database and simulated records, calls OpenAI, and prints a sanitized JSON report. It exits 77 if the key is absent. It verifies one awaiting-confirmation draft and stops before submission.
+- See [Phase 06B Live Agent verification](live-agent-verification.md) for the manual 20-case suite, cost preflight and current verification results.
 
-## Verification report
+## Phase 06 baseline verification report
 
 Local run on 2026-11-28 with Python 3.12, OpenAI Agents SDK 0.26.0 and system-compatible Chromium.
 

@@ -41,6 +41,7 @@ jobs:
           . ./.env
           set +a
           python3 scripts/smoke_workflow.py
+          python3 scripts/evaluate_knowledge.py
       - run: npm ci
         working-directory: frontend
       - run: npx playwright install --with-deps chromium

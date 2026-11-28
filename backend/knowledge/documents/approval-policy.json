@@ -1,0 +1,9 @@
+{
+  "id": "approval-policy",
+  "title": "採購簽核規範",
+  "version": 3,
+  "department": "shared",
+  "role": "all",
+  "updated_at": "2025-01-01T00:00:00Z",
+  "expires_on": null
+}

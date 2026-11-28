@@ -2,7 +2,7 @@
 # This is a standalone public *simulation*. Only the gateway publishes ports.
 services:
   db:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:0.8.2-pg16
     restart: unless-stopped
     environment:
       POSTGRES_USER: hub

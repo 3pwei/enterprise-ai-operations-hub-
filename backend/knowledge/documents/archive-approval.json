@@ -1,0 +1,9 @@
+{
+  "id": "archive-approval",
+  "title": "舊版緊急簽核公告",
+  "version": 1,
+  "department": "shared",
+  "role": "all",
+  "updated_at": "2024-01-01T00:00:00Z",
+  "expires_on": "2024-12-31"
+}

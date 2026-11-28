@@ -4,6 +4,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from backend.db import Base, engine
+from backend.knowledge.index import load_corpus
 from backend.models import (
     ActiveProcurementRule,
     Approval,
@@ -77,6 +78,11 @@ def sync_postgres_sequences(db: Session) -> None:
 
 
 def initialize() -> None:
-    Base.metadata.create_all(engine())
+    with engine().begin() as connection:
+        if connection.dialect.name == "postgresql":
+            connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        Base.metadata.create_all(connection)
     with Session(engine()) as db:
         seed(db)
+        with db.begin():
+            load_corpus(db)

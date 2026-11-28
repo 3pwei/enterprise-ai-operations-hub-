@@ -8,6 +8,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from backend.config import settings
+from backend.knowledge.models import Lookup
 from backend.models import (
     Approval,
     Audit,
@@ -110,6 +111,7 @@ def purge_expired(db: Session) -> int:
         db.execute(delete(DemoWorkspace).where(DemoWorkspace.id == workspace.id))
         db.execute(delete(ProcurementRule).where(ProcurementRule.id.in_(rule_ids)))
         db.execute(delete(Audit).where(Audit.actor_id.in_(member_ids)))
+        db.execute(delete(Lookup).where(Lookup.actor_id.in_(member_ids)))
         db.execute(delete(User).where(User.id.in_(member_ids)))
     if expired:
         db.commit()

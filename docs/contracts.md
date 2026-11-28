@@ -29,3 +29,9 @@ MCP calls require a signed capability issued by the API. It expires after 120 se
 | EIP | `approval_status` | manager capability, positive `approval_id` | `eip.approvals`: approval ID, purchase ID, status |
 
 The MCP client uses official Python SDK stdio transport, so servers are not publicly exposed. The MCP `call_tool` response is decoded by the API. No generic SQL query tool or mutating MCP method is registered. Purchase submission is a separate, explicitly confirmed and role-checked API action. Individual tools are also independently testable by running the corresponding Python module as a stdio MCP server.
+
+## Knowledge Q&A
+
+`POST /api/knowledge/query` accepts a required `message` and an optional `filters` object with `department`, `document_id`, and `version`. It uses the same developer bearer authentication or public session cookie as the console. It returns `status` (`answered` or `no_evidence`), `mode`, exact quoted `answer`, `citations` (document ID, title, version, department, updated timestamp, section, paragraph, excerpt), `inference` (null), and a correlated `trace`. The trace contains the execution strategy, match count, and request ID. The response is marked `Cache-Control: no-store`. Requests for unauthorized, expired, or superseded sources yield the same no-evidence response as an unknown question.
+
+Internal MCP tool `knowledge_search(capability, question, request_id)` accepts the same typed question object and a UUID. The tool verifies the capability and loads the authorized department scope from server-side configuration. Caller filters only narrow that scope. See [RAG design](rag.md).
